@@ -588,14 +588,18 @@ def import_docx():
         return jsonify(campos)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-# ─── Google Drive OAuth routes ───────────────────────────────────────────────
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
+
+# ─── Google Drive OAuth routes ────────────────────────────────────────────────
 
 @app.route('/oauth/start')
 def oauth_start():
     try:
         from drive import get_auth_url
-        state = request.args.get('state', '')
-        url = get_auth_url(state=state)
+        url = get_auth_url()
         return jsonify({'url': url})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -604,20 +608,13 @@ def oauth_start():
 def oauth_callback():
     try:
         from drive import exchange_code
+        from urllib.parse import quote
         code = request.args.get('code')
-        state = request.args.get('state', '')
         creds = exchange_code(code)
-        creds_json = json.dumps(creds)
-        return f"""<!DOCTYPE html>
-<html><body>
-<script>
-  window.opener.postMessage({{type:'drive_auth',creds:{creds_json},state:'{state}'}}, '*');
-  window.close();
-</script>
-<p>Autorización completada. Podés cerrar esta ventana.</p>
-</body></html>"""
+        creds_json = quote(json.dumps(creds))
+        return f'<script>window.location.href = "/?creds={creds_json}";</script>'
     except Exception as e:
-        return f"<p>Error: {e}</p>", 500
+        return f'<script>window.location.href = "/?drive_error={str(e)}";</script>'
 
 @app.route('/api/upload-drive', methods=['POST'])
 def upload_drive():
@@ -635,7 +632,3 @@ def upload_drive():
     except Exception as e:
         import traceback
         return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
-
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
