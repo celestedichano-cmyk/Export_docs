@@ -1,16 +1,10 @@
 """
 Google Drive integration for Export Docs Tool.
-Handles OAuth2 flow and file upload to the correct folder structure:
-Certificados Expo / {producto} / Editables
 """
 
 import os
 import json
 from io import BytesIO
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import Flow
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload
 
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
 CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
@@ -19,6 +13,7 @@ REDIRECT_URI = os.environ.get('GOOGLE_REDIRECT_URI', 'https://notco-export-docs.
 ROOT_FOLDER_NAME = 'Certificados Expo'
 
 def get_flow():
+    from google_auth_oauthlib.flow import Flow
     client_config = {
         "web": {
             "client_id": CLIENT_ID,
@@ -36,24 +31,38 @@ def get_auth_url(state=None):
     auth_url, _ = flow.authorization_url(
         access_type='offline',
         include_granted_scopes='true',
-        state=state or ''
+        state=state or '',
+        prompt='consent'
     )
     return auth_url
 
 def exchange_code(code):
-    flow = get_flow()
-    flow.fetch_token(code=code)
-    creds = flow.credentials
+    from requests_oauthlib import OAuth2Session
+    import requests
+    # Use requests directly to avoid code_verifier issue
+    token_url = 'https://oauth2.googleapis.com/token'
+    data = {
+        'code': code,
+        'client_id': CLIENT_ID,
+        'client_secret': CLIENT_SECRET,
+        'redirect_uri': REDIRECT_URI,
+        'grant_type': 'authorization_code',
+    }
+    resp = requests.post(token_url, data=data)
+    resp.raise_for_status()
+    token = resp.json()
     return {
-        'token': creds.token,
-        'refresh_token': creds.refresh_token,
-        'token_uri': creds.token_uri,
-        'client_id': creds.client_id,
-        'client_secret': creds.client_secret,
-        'scopes': list(creds.scopes) if creds.scopes else SCOPES,
+        'token': token.get('access_token'),
+        'refresh_token': token.get('refresh_token'),
+        'token_uri': token_url,
+        'client_id': CLIENT_ID,
+        'client_secret': CLIENT_SECRET,
+        'scopes': SCOPES,
     }
 
 def get_service(creds_dict):
+    from google.oauth2.credentials import Credentials
+    from googleapiclient.discovery import build
     creds = Credentials(
         token=creds_dict['token'],
         refresh_token=creds_dict.get('refresh_token'),
@@ -65,7 +74,6 @@ def get_service(creds_dict):
     return build('drive', 'v3', credentials=creds)
 
 def find_or_create_folder(service, name, parent_id=None):
-    """Find a folder by name (and optional parent), or create it."""
     query = f"name='{name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
     if parent_id:
         query += f" and '{parent_id}' in parents"
@@ -73,29 +81,18 @@ def find_or_create_folder(service, name, parent_id=None):
     files = results.get('files', [])
     if files:
         return files[0]['id']
-    # Create it
-    meta = {
-        'name': name,
-        'mimeType': 'application/vnd.google-apps.folder',
-    }
+    meta = {'name': name, 'mimeType': 'application/vnd.google-apps.folder'}
     if parent_id:
         meta['parents'] = [parent_id]
     folder = service.files().create(body=meta, fields='id').execute()
     return folder['id']
 
 def upload_file(creds_dict, filename, file_bytes, producto):
-    """
-    Upload file to: Certificados Expo / {producto} / Editables
-    Returns the file's web view URL.
-    """
+    from googleapiclient.http import MediaIoBaseUpload
     service = get_service(creds_dict)
-
-    # Build folder structure
     root_id = find_or_create_folder(service, ROOT_FOLDER_NAME)
     product_id = find_or_create_folder(service, producto, parent_id=root_id)
     editables_id = find_or_create_folder(service, 'Editables', parent_id=product_id)
-
-    # Upload file
     file_meta = {'name': filename, 'parents': [editables_id]}
     media = MediaIoBaseUpload(
         BytesIO(file_bytes),
@@ -103,9 +100,6 @@ def upload_file(creds_dict, filename, file_bytes, producto):
         resumable=True
     )
     uploaded = service.files().create(
-        body=file_meta,
-        media_body=media,
-        fields='id, webViewLink'
+        body=file_meta, media_body=media, fields='id, webViewLink'
     ).execute()
-
     return uploaded.get('webViewLink', '')
