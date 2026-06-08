@@ -477,19 +477,50 @@ function onDocGenerated(blob, filename) {
 document.getElementById('drive-btn').addEventListener('click', async () => {
   if (!lastGeneratedBlob) { showToast('Primero generá un documento', 'error'); return; }
   if (!driveCredentials) {
-    const res = await fetch('/oauth/start?state=' + encodeURIComponent(lastGeneratedFilename));
-    const data = await res.json();
-    if (data.error) { showToast('Error: ' + data.error, 'error'); return; }
-    const popup = window.open(data.url, 'drive_auth', 'width=500,height=600');
-    window.addEventListener('message', async (e) => {
-      if (e.data && e.data.type === 'drive_auth') {
-        driveCredentials = e.data.creds;
-        popup && popup.close();
-        await uploadToDrive();
-      }
-    }, { once: true });
+    // Save pending upload to sessionStorage then redirect to OAuth
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      sessionStorage.setItem('pending_blob', e.target.result);
+      sessionStorage.setItem('pending_filename', lastGeneratedFilename);
+      sessionStorage.setItem('pending_producto', collectData().producto || '');
+    };
+    reader.readAsDataURL(lastGeneratedBlob);
+    setTimeout(async () => {
+      const res = await fetch('/oauth/start');
+      const data = await res.json();
+      if (data.error) { showToast('Error: ' + data.error, 'error'); return; }
+      window.location.href = data.url;
+    }, 200);
   } else {
     await uploadToDrive();
+  }
+});
+
+// On page load, check if returning from OAuth
+window.addEventListener('load', async () => {
+  const params = new URLSearchParams(window.location.search);
+  const creds = params.get('creds');
+  if (creds) {
+    try {
+      driveCredentials = JSON.parse(decodeURIComponent(creds));
+      // Restore pending upload
+      const blobData = sessionStorage.getItem('pending_blob');
+      const filename = sessionStorage.getItem('pending_filename');
+      const producto = sessionStorage.getItem('pending_producto');
+      if (blobData && filename) {
+        const res = await fetch(blobData);
+        lastGeneratedBlob = await res.blob();
+        lastGeneratedFilename = filename;
+        sessionStorage.removeItem('pending_blob');
+        sessionStorage.removeItem('pending_filename');
+        sessionStorage.removeItem('pending_producto');
+        // Clean URL
+        window.history.replaceState({}, '', '/');
+        await uploadToDrive();
+      }
+    } catch(e) {
+      showToast('Error restaurando sesión: ' + e.message, 'error');
+    }
   }
 });
 
