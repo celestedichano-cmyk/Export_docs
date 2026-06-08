@@ -1,8 +1,5 @@
 [phases.setup]
-aptPkgs = ["libreoffice"]
-
-[phases.install]
-cmds = ["pip install -r requirements.txt"]
+nixPkgs = ["libreoffice-unwrapped"]
 
 [start]
 cmd = "python server.py"
