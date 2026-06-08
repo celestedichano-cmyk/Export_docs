@@ -588,6 +588,53 @@ def import_docx():
         return jsonify(campos)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+# ─── Google Drive OAuth routes ───────────────────────────────────────────────
+
+@app.route('/oauth/start')
+def oauth_start():
+    try:
+        from drive import get_auth_url
+        state = request.args.get('state', '')
+        url = get_auth_url(state=state)
+        return jsonify({'url': url})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/oauth/callback')
+def oauth_callback():
+    try:
+        from drive import exchange_code
+        code = request.args.get('code')
+        state = request.args.get('state', '')
+        creds = exchange_code(code)
+        creds_json = json.dumps(creds)
+        return f"""<!DOCTYPE html>
+<html><body>
+<script>
+  window.opener.postMessage({{type:'drive_auth',creds:{creds_json},state:'{state}'}}, '*');
+  window.close();
+</script>
+<p>Autorización completada. Podés cerrar esta ventana.</p>
+</body></html>"""
+    except Exception as e:
+        return f"<p>Error: {e}</p>", 500
+
+@app.route('/api/upload-drive', methods=['POST'])
+def upload_drive():
+    try:
+        from drive import upload_file
+        creds = request.form.get('creds')
+        producto = request.form.get('producto', 'Sin_producto')
+        f = request.files.get('file')
+        if not creds or not f:
+            return jsonify({'error': 'Faltan datos'}), 400
+        creds_dict = json.loads(creds)
+        file_bytes = f.read()
+        link = upload_file(creds_dict, f.filename, file_bytes, producto)
+        return jsonify({'link': link})
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
