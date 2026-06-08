@@ -528,7 +528,10 @@ def convert_pdf():
     tmp_pdf = tmp_docx.replace('.docx', '.pdf')
     f.save(tmp_docx)
     try:
-        subprocess.run(['libreoffice', '--headless', '--convert-to', 'pdf', '--outdir', '/tmp', tmp_docx],
+        # Find libreoffice binary (path varies by environment)
+        import shutil
+        lo_bin = shutil.which('libreoffice') or shutil.which('soffice') or '/usr/bin/libreoffice'
+        subprocess.run([lo_bin, '--headless', '--convert-to', 'pdf', '--outdir', '/tmp', tmp_docx],
                        capture_output=True)
         if os.path.exists(tmp_pdf):
             return send_file(tmp_pdf, as_attachment=True,
