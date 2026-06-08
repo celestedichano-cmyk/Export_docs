@@ -224,6 +224,13 @@
           <div class="spinner" id="gen-spinner"></div>
         </button>
         <button class="btn btn-secondary" type="button" id="clear-btn">Limpiar</button>
+        <button class="btn btn-secondary" type="button" id="drive-btn" style="display:none">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          Subir a Drive
+        </button>
+        <a id="drive-link" href="#" target="_blank" style="display:none; font-size:13px; color:var(--accent2)">
+          ✓ Ver en Drive
+        </a>
       </div>
     </div>
 
@@ -397,6 +404,7 @@ document.getElementById('generate-btn').addEventListener('click', async () => {
     a.href = url; a.download = fname; a.click();
     URL.revokeObjectURL(url);
     showToast('Documento generado correctamente', 'success');
+    onDocGenerated(blob, fname);
   } catch(e) {
     showToast('Error: ' + e.message, 'error');
   } finally {
@@ -497,6 +505,71 @@ document.getElementById('docx-input').addEventListener('change', async e => {
   }
   e.target.value = '';
 });
+
+// ─── Google Drive integration ────────────────────────────────────────────────
+let driveCredentials = null;
+let lastGeneratedBlob = null;
+let lastGeneratedFilename = null;
+
+// Show Drive button after successful generation
+const origGenClick = document.getElementById('generate-btn').onclick;
+document.getElementById('generate-btn').addEventListener('click', () => {
+  document.getElementById('drive-btn').style.display = 'none';
+  document.getElementById('drive-link').style.display = 'none';
+});
+
+function onDocGenerated(blob, filename) {
+  lastGeneratedBlob = blob;
+  lastGeneratedFilename = filename;
+  document.getElementById('drive-btn').style.display = 'inline-flex';
+}
+
+document.getElementById('drive-btn').addEventListener('click', async () => {
+  if (!lastGeneratedBlob) { showToast('Primero generá un documento', 'error'); return; }
+  if (!driveCredentials) {
+    // Open OAuth popup
+    const res = await fetch('/oauth/start?state=' + encodeURIComponent(lastGeneratedFilename));
+    const data = await res.json();
+    if (data.error) { showToast('Error: ' + data.error, 'error'); return; }
+    const popup = window.open(data.url, 'drive_auth', 'width=500,height=600');
+    window.addEventListener('message', async (e) => {
+      if (e.data && e.data.type === 'drive_auth') {
+        driveCredentials = e.data.creds;
+        popup && popup.close();
+        await uploadToDrive();
+      }
+    }, { once: true });
+  } else {
+    await uploadToDrive();
+  }
+});
+
+async function uploadToDrive() {
+  const btn = document.getElementById('drive-btn');
+  btn.disabled = true;
+  btn.textContent = 'Subiendo...';
+  try {
+    const data = collectData();
+    const producto = data.producto || 'Sin_producto';
+    const formData = new FormData();
+    formData.append('file', lastGeneratedBlob, lastGeneratedFilename);
+    formData.append('creds', JSON.stringify(driveCredentials));
+    formData.append('producto', producto);
+    const res = await fetch('/api/upload-drive', { method: 'POST', body: formData });
+    const result = await res.json();
+    if (result.error) throw new Error(result.error);
+    showToast('Archivo subido a Drive', 'success');
+    const link = document.getElementById('drive-link');
+    link.href = result.link;
+    link.style.display = 'inline';
+  } catch(e) {
+    showToast('Error subiendo a Drive: ' + e.message, 'error');
+    driveCredentials = null;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> Subir a Drive';
+  }
+}
 
 function showToast(msg, type) {
   const t = document.getElementById('toast');
