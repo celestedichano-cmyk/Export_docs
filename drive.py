@@ -4,6 +4,7 @@ Google Drive integration for Export Docs Tool.
 
 import os
 import json
+import requests
 from io import BytesIO
 
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
@@ -12,49 +13,33 @@ CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
 REDIRECT_URI = os.environ.get('GOOGLE_REDIRECT_URI', 'https://notco-export-docs.up.railway.app/oauth/callback')
 ROOT_FOLDER_NAME = 'Certificados Expo'
 
-def get_flow():
-    from google_auth_oauthlib.flow import Flow
-    client_config = {
-        "web": {
-            "client_id": CLIENT_ID,
-            "client_secret": CLIENT_SECRET,
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "redirect_uris": [REDIRECT_URI],
-        }
-    }
-    flow = Flow.from_client_config(client_config, scopes=SCOPES, redirect_uri=REDIRECT_URI)
-    return flow
-
 def get_auth_url(state=None):
-    flow = get_flow()
-    auth_url, _ = flow.authorization_url(
-        access_type='offline',
-        include_granted_scopes='true',
-        state=state or '',
-        prompt='consent'
-    )
-    return auth_url
+    from urllib.parse import urlencode
+    params = {
+        'client_id': CLIENT_ID,
+        'redirect_uri': REDIRECT_URI,
+        'response_type': 'code',
+        'scope': ' '.join(SCOPES),
+        'access_type': 'offline',
+        'prompt': 'consent',
+        'state': state or '',
+    }
+    return 'https://accounts.google.com/o/oauth2/v2/auth?' + urlencode(params)
 
 def exchange_code(code):
-    from requests_oauthlib import OAuth2Session
-    import requests
-    # Use requests directly to avoid code_verifier issue
-    token_url = 'https://oauth2.googleapis.com/token'
-    data = {
+    resp = requests.post('https://oauth2.googleapis.com/token', data={
         'code': code,
         'client_id': CLIENT_ID,
         'client_secret': CLIENT_SECRET,
         'redirect_uri': REDIRECT_URI,
         'grant_type': 'authorization_code',
-    }
-    resp = requests.post(token_url, data=data)
+    })
     resp.raise_for_status()
     token = resp.json()
     return {
         'token': token.get('access_token'),
         'refresh_token': token.get('refresh_token'),
-        'token_uri': token_url,
+        'token_uri': 'https://oauth2.googleapis.com/token',
         'client_id': CLIENT_ID,
         'client_secret': CLIENT_SECRET,
         'scopes': SCOPES,
