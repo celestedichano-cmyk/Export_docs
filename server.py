@@ -253,10 +253,10 @@ def generate_doc(template_id, data):
         if doc.tables:
             t = doc.tables[0]
             row = t.rows[3]
-            # Col 1 (Estructura): 'xx XXX (HH:MM)' -> replace xx only
+            # Col 1 (Estructura): 'PB XXX (HH:MM)' -> replace PB with abrev
             cell1 = row.cells[1]
             for p in cell1.paragraphs:
-                replace_in_paragraph(p, {'xx ': abrev + ' '})
+                replace_in_paragraph(p, {'PB': abrev})
             # Col 2 (Significado): replace PB (abrev) and Pacificblu (nombre completo)
             cell2 = row.cells[2]
             for p in cell2.paragraphs:
