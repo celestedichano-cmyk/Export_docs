@@ -593,11 +593,30 @@ def import_docx():
 
 # ─── Google Drive OAuth routes ────────────────────────────────────────────────
 
+# In-memory temp storage for OAuth flow
+_temp_files = {}
+
+@app.route('/api/save-temp', methods=['POST'])
+def save_temp():
+    import uuid
+    f = request.files.get('file')
+    producto = request.form.get('producto', 'Sin_producto')
+    if not f:
+        return jsonify({'error': 'No file'}), 400
+    file_id = str(uuid.uuid4())
+    _temp_files[file_id] = {
+        'bytes': f.read(),
+        'filename': f.filename,
+        'producto': producto
+    }
+    return jsonify({'file_id': file_id})
+
 @app.route('/oauth/start')
 def oauth_start():
     try:
         from drive import get_auth_url
-        url = get_auth_url()
+        file_id = request.args.get('file_id', '')
+        url = get_auth_url(state=file_id)
         return jsonify({'url': url})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -608,24 +627,24 @@ def oauth_callback():
         from drive import exchange_code
         from urllib.parse import quote
         code = request.args.get('code')
+        file_id = request.args.get('state', '')
         creds = exchange_code(code)
         creds_json = quote(json.dumps(creds))
-        return f'<script>window.location.href = "/?creds={creds_json}";</script>'
+        return f'<script>window.location.href = "/?creds={creds_json}&file_id={file_id}";</script>'
     except Exception as e:
         return f'<script>window.location.href = "/?drive_error={str(e)}";</script>'
 
-@app.route('/api/upload-drive', methods=['POST'])
-def upload_drive():
+@app.route('/api/upload-drive-temp', methods=['POST'])
+def upload_drive_temp():
     try:
         from drive import upload_file
-        creds = request.form.get('creds')
-        producto = request.form.get('producto', 'Sin_producto')
-        f = request.files.get('file')
-        if not creds or not f:
-            return jsonify({'error': 'Faltan datos'}), 400
-        creds_dict = json.loads(creds)
-        file_bytes = f.read()
-        link = upload_file(creds_dict, f.filename, file_bytes, producto)
+        body = request.get_json()
+        file_id = body.get('file_id')
+        creds_dict = body.get('creds')
+        if not file_id or file_id not in _temp_files:
+            return jsonify({'error': 'Archivo temporal no encontrado. Generá el documento de nuevo.'}), 400
+        tmp = _temp_files.pop(file_id)
+        link = upload_file(creds_dict, tmp['filename'], tmp['bytes'], tmp['producto'])
         return jsonify({'link': link})
     except Exception as e:
         import traceback
