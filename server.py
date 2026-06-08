@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
 Export Documentation Tool - Flask Backend
-Generates .docx files from templates by replacing placeholders with user data.
 """
 
 import os
@@ -29,8 +28,11 @@ def today_es():
     d = datetime.today()
     return f"{d.day} de {MONTHS_ES[d.month]} del {d.year}"
 
-
-# ─── Template definitions ────────────────────────────────────────────────────
+# Campos de firmante compartidos por todos los templates
+FIRMANTE_FIELDS = [
+    {"id": "firmante_nombre", "label": "Nombre del firmante", "type": "text", "placeholder": "Mariana Brizzio"},
+    {"id": "firmante_cargo", "label": "Cargo del firmante", "type": "text", "placeholder": "Head R&D South Cone"},
+]
 
 TEMPLATES = {
     "certificado_codificacion": {
@@ -38,14 +40,9 @@ TEMPLATES = {
         "file": "Template_CERTIFICADO_DE_CODIFICACIO_N_DE_FECHA_Y_LOTE.docx",
         "fields": [
             {"id": "producto", "label": "Nombre del producto", "type": "text", "placeholder": "NOT Burger 113g"},
+            {"id": "dia_correlativo", "label": "Día correlativo del año (lote)", "type": "text", "placeholder": "159"},
             {"id": "fecha", "label": "Fecha del documento", "type": "text", "placeholder": today_es()},
-            {"id": "firmante_nombre", "label": "Nombre del firmante", "type": "text", "placeholder": "Mariana Brizzio"},
-            {"id": "firmante_cargo", "label": "Cargo del firmante", "type": "text", "placeholder": "Head R&D South Cone"},
-        ],
-        "replacements": lambda d: {
-            "XXX": d["producto"],
-            "XX de XX del 2025": d["fecha"],
-        }
+        ] + FIRMANTE_FIELDS,
     },
 
     "certificado_empaque": {
@@ -69,10 +66,7 @@ TEMPLATES = {
             {"id": "material_s", "label": "Secundario – Material", "type": "text", "placeholder": "Cartón corrugado"},
             {"id": "cantidad_unidades", "label": "Secundario – Cantidad de unidades", "type": "number", "placeholder": ""},
             {"id": "fecha", "label": "Fecha del documento", "type": "text", "placeholder": today_es()},
-        ],
-        "table_fills": {
-            "empaque": True  # special handler
-        }
+        ] + FIRMANTE_FIELDS,
     },
 
     "certificado_proceso": {
@@ -81,11 +75,7 @@ TEMPLATES = {
         "fields": [
             {"id": "producto", "label": "Nombre del producto (código)", "type": "text", "placeholder": "NOT20012"},
             {"id": "fecha", "label": "Fecha del documento", "type": "text", "placeholder": today_es()},
-        ],
-        "replacements": lambda d: {
-            "NOTXXX": d["producto"],
-            "XX de mayo de 2025": d["fecha"],
-        }
+        ] + FIRMANTE_FIELDS,
     },
 
     "informe_analisis": {
@@ -93,7 +83,6 @@ TEMPLATES = {
         "file": "Template_INFORME_ANA_LISIS.docx",
         "fields": [
             {"id": "producto", "label": "Nombre del producto", "type": "text", "placeholder": "NOT Burger 113g"},
-            {"id": "fecha", "label": "Fecha del documento", "type": "text", "placeholder": today_es()},
             {"id": "fq_rows", "label": "Análisis fisicoquímicos (Parámetro | Metodología | Resultado, una fila por línea)", "type": "textarea", "placeholder": "pH | AOAC 943.02 | 6.8\nHumedad | AOAC 925.10 | 62%"},
             {"id": "mb_rows", "label": "Análisis microbiológicos (Parámetro | Metodología | Resultado)", "type": "textarea", "placeholder": "Recuento aeróbico | ISO 4833 | <10 UFC/g"},
             {"id": "apariencia", "label": "Sensorial – Apariencia", "type": "text", "placeholder": "Homogénea, sin defectos"},
@@ -107,7 +96,7 @@ TEMPLATES = {
             {"id": "sn", "label": "Contaminantes – Estaño Sn (mg/kg)", "type": "text", "placeholder": "<1.0"},
             {"id": "fe", "label": "Contaminantes – Hierro Fe (mg/kg)", "type": "text", "placeholder": "<5.0"},
             {"id": "fecha", "label": "Fecha del documento", "type": "text", "placeholder": today_es()},
-        ],
+        ] + FIRMANTE_FIELDS,
     },
 
     "informe_nutricional": {
@@ -129,7 +118,7 @@ TEMPLATES = {
             {"id": "fibra", "label": "Fibra (g)", "type": "number", "placeholder": ""},
             {"id": "sodio", "label": "Sodio (mg)", "type": "number", "placeholder": ""},
             {"id": "fecha", "label": "Fecha del documento", "type": "text", "placeholder": today_es()},
-        ],
+        ] + FIRMANTE_FIELDS,
     },
 
     "informe_aditivos": {
@@ -137,10 +126,10 @@ TEMPLATES = {
         "file": "Template_INFORME_FUNCIONALIDAD_ADITIVOS.docx",
         "fields": [
             {"id": "producto", "label": "Nombre del producto", "type": "text", "placeholder": "NOT Burger 113g"},
-            {"id": "ingredientes", "label": "Lista de ingredientes (uno por línea, los aditivos en MAYÚSCULAS)", "type": "textarea", "placeholder": "Agua\nProteína de soya\nACEITE DE GIRASOL\nSal\nAROMATIZANTE NATURAL"},
+            {"id": "ingredientes", "label": "Lista de ingredientes (uno por línea, aditivos en MAYÚSCULAS)", "type": "textarea", "placeholder": "Agua\nProteína de soya\nACEITE DE GIRASOL\nSal\nAROMATIZANTE NATURAL"},
             {"id": "aditivos", "label": "Aditivos y su función (Nombre | Función, uno por línea)", "type": "textarea", "placeholder": "ACEITE DE GIRASOL | Agente de relleno\nAROMATIZANTE NATURAL | Aromatizante"},
             {"id": "fecha", "label": "Fecha del documento", "type": "text", "placeholder": today_es()},
-        ],
+        ] + FIRMANTE_FIELDS,
     },
 
     "reporte_fibra": {
@@ -150,7 +139,7 @@ TEMPLATES = {
             {"id": "producto", "label": "Nombre del producto", "type": "text", "placeholder": "NOT Burger 113g"},
             {"id": "fibra_total", "label": "Fibra Dietética Total (g/100g)", "type": "number", "placeholder": ""},
             {"id": "fecha", "label": "Fecha del documento", "type": "text", "placeholder": today_es()},
-        ],
+        ] + FIRMANTE_FIELDS,
     },
 
     "reporte_formula": {
@@ -160,7 +149,7 @@ TEMPLATES = {
             {"id": "producto", "label": "Nombre del producto", "type": "text", "placeholder": "NOT Burger 113g"},
             {"id": "formula_rows", "label": "Ingredientes y cantidades (Ingrediente | % en 100g, uno por línea)", "type": "textarea", "placeholder": "Agua | 55.0\nProteína de soya texturizada | 20.0\nAceite de girasol | 10.0"},
             {"id": "fecha", "label": "Fecha del documento", "type": "text", "placeholder": today_es()},
-        ],
+        ] + FIRMANTE_FIELDS,
     },
 
     "reporte_saborizantes": {
@@ -172,21 +161,14 @@ TEMPLATES = {
             {"id": "sab_identico", "label": "Saborizante Idéntico Natural (%)", "type": "text", "placeholder": "0.3"},
             {"id": "sab_total", "label": "Total saborizantes (%)", "type": "text", "placeholder": "0.8"},
             {"id": "fecha", "label": "Fecha del documento", "type": "text", "placeholder": today_es()},
-        ],
+        ] + FIRMANTE_FIELDS,
     },
 }
 
 
 # ─── Document generation helpers ─────────────────────────────────────────────
 
-def replace_in_run(run, old, new):
-    if old in run.text:
-        run.text = run.text.replace(old, new)
-        return True
-    return False
-
 def replace_in_paragraph(para, replacements):
-    """Replace text across runs in a paragraph."""
     full = ''.join(r.text for r in para.runs)
     changed = False
     for old, new in replacements.items():
@@ -206,20 +188,30 @@ def replace_all(doc, replacements):
             for cell in row.cells:
                 for para in cell.paragraphs:
                     replace_in_paragraph(para, replacements)
-    # Also check headers/footers
     for section in doc.sections:
         for hdr in [section.header, section.footer]:
             if hdr:
                 for para in hdr.paragraphs:
                     replace_in_paragraph(para, replacements)
 
+def apply_firmante(doc, data):
+    """Replace firmante name and cargo in all paragraphs."""
+    nombre = data.get('firmante_nombre', '').strip()
+    cargo = data.get('firmante_cargo', '').strip()
+    if nombre:
+        replace_all(doc, {'Mariana Brizzio': nombre, 'Javiera Mujica': nombre})
+    if cargo:
+        replace_all(doc, {
+            'Head R&D South Cone': cargo,
+            'Head R****&****D South Cone': cargo,
+            'R&D Manager South Cone': cargo,
+            'R****&****D Manager South Cone': cargo,
+        })
+
 def fill_table_rows(table, data_rows, start_row=1):
-    """Fill a table with data rows, adding rows as needed."""
-    # Remove placeholder rows first (rows with 'x' content)
     while len(table.rows) > start_row:
         tr = table.rows[-1]._tr
         tr.getparent().remove(tr)
-    # Add data rows
     for row_data in data_rows:
         row = copy.deepcopy(table.rows[start_row - 1])
         cells = row.cells
@@ -250,21 +242,23 @@ def generate_doc(template_id, data):
     path = os.path.join(TEMPLATES_DIR, tmpl['file'])
     doc = Document(path)
 
-    producto = data.get('producto', data.get('producto', 'XXX'))
+    producto = data.get('producto', 'XXX')
     fecha = data.get('fecha', today_es())
 
     if template_id == 'certificado_codificacion':
-        replace_all(doc, {'XXX': producto, 'XX de XX del 2025': fecha})
+        dia = data.get('dia_correlativo', 'XXX')
+        replace_all(doc, {
+            'PB XXX': f'PB {dia}',
+            'XX de XX del 2025': fecha,
+        })
+        # Replace product name carefully (XXX appears also in lote row)
+        replace_all(doc, {'XXX': producto})
 
     elif template_id == 'certificado_proceso':
         replace_all(doc, {'NOTXXX': producto, 'XX de mayo de 2025': fecha})
 
     elif template_id == 'certificado_empaque':
-        replace_all(doc, {
-            'XXX': producto,
-            'XX de XX del 2025': fecha,
-        })
-        # Fill tables
+        replace_all(doc, {'XXX': producto, 'XX de XX del 2025': fecha})
         tables = doc.tables
         if len(tables) >= 1:
             t1 = tables[0]
@@ -305,32 +299,23 @@ def generate_doc(template_id, data):
                             for r in p.runs: r.text=''
                             if p.runs: p.runs[0].text = str(val)
                             else: p.add_run(str(val))
-        # tipo envase
-        for para in doc.paragraphs:
-            if 'Tipo de envase: XXX' in para.text:
-                replace_in_paragraph(para, {'Tipo de envase: XXX': f'Tipo de envase: {data.get("tipo_envase_primario","")}'})
-                break
-        # secondary type - second occurrence
         found = 0
         for para in doc.paragraphs:
             if 'Tipo de envase:' in para.text:
                 found += 1
-                if found == 2:
+                if found == 1:
+                    replace_in_paragraph(para, {'Tipo de envase: XXX': f'Tipo de envase: {data.get("tipo_envase_primario","")}'})
+                elif found == 2:
                     replace_in_paragraph(para, {'Tipo de envase: XXX': f'Tipo de envase: {data.get("tipo_envase_secundario","")}'})
-                    break
 
     elif template_id == 'informe_analisis':
         replace_all(doc, {'XXX': producto, 'XX de XX del 2025': fecha})
         tables = doc.tables
-        # FQ table (index 0), MB table (index 1), Sensorial (index 2), Contaminantes (index 3)
         if len(tables) > 0 and data.get('fq_rows'):
-            rows = parse_rows(data['fq_rows'])
-            fill_table_rows(tables[0], rows)
+            fill_table_rows(tables[0], parse_rows(data['fq_rows']))
         if len(tables) > 1 and data.get('mb_rows'):
-            rows = parse_rows(data['mb_rows'])
-            fill_table_rows(tables[1], rows)
+            fill_table_rows(tables[1], parse_rows(data['mb_rows']))
         if len(tables) > 2:
-            t = tables[2]
             sensorial = {
                 'Apariencia': data.get('apariencia',''),
                 'Color': data.get('color',''),
@@ -338,7 +323,7 @@ def generate_doc(template_id, data):
                 'Sabor': data.get('sabor',''),
                 'Textura': data.get('textura',''),
             }
-            for row in t.rows[1:]:
+            for row in tables[2].rows[1:]:
                 key = row.cells[0].text.strip()
                 if key in sensorial:
                     cell = row.cells[2]
@@ -347,7 +332,6 @@ def generate_doc(template_id, data):
                         if p.runs: p.runs[0].text = sensorial[key]
                         else: p.add_run(sensorial[key])
         if len(tables) > 3:
-            t = tables[3]
             contam = {
                 'Plomo (Pb)': data.get('pb',''),
                 'Cobre (Cu)': data.get('cu',''),
@@ -355,7 +339,7 @@ def generate_doc(template_id, data):
                 'Estaño (Sn)': data.get('sn',''),
                 'Hierro (Fe)': data.get('fe',''),
             }
-            for row in t.rows[1:]:
+            for row in tables[3].rows[1:]:
                 key = row.cells[0].text.strip()
                 for k, v in contam.items():
                     if k in key:
@@ -395,11 +379,9 @@ def generate_doc(template_id, data):
 
     elif template_id == 'informe_aditivos':
         replace_all(doc, {'XX': producto, 'XX de XX del 2025': fecha})
-        # Fill ingredients list table
         if doc.tables and data.get('ingredientes'):
             lines = [l.strip() for l in data['ingredientes'].split('\n') if l.strip()]
             t = doc.tables[0]
-            # clear existing rows (keep header if any)
             while len(t.rows) > 0:
                 t._tbl.remove(t.rows[-1]._tr)
             for ing in lines:
@@ -411,10 +393,8 @@ def generate_doc(template_id, data):
                 t_el.text = ing
                 r.append(t_el); p.append(r); tc.append(p); row.append(tc)
                 t._tbl.append(row)
-        # Fill aditivos section via text replacement
         if data.get('aditivos'):
             pairs = parse_rows(data['aditivos'])
-            # Each ADITIVO paragraph has 2 runs: run[0]=nombre, run[1]=función
             aditivo_paras = [p for p in doc.paragraphs if 'ADITIVO' in p.text]
             for i, para in enumerate(aditivo_paras):
                 if i < len(pairs):
@@ -429,7 +409,6 @@ def generate_doc(template_id, data):
     elif template_id == 'reporte_fibra':
         replace_all(doc, {
             'xxxxxx': producto,
-            'FIBRA DIETÉTICA TOTAL (g)': 'FIBRA DIETÉTICA TOTAL (g)',
             'xx de febrero del 202x': fecha,
             'xx de febrero del 202X': fecha,
         })
@@ -446,10 +425,8 @@ def generate_doc(template_id, data):
         if doc.tables and data.get('formula_rows'):
             rows = parse_rows(data['formula_rows'])
             t = doc.tables[0]
-            # Remove placeholder rows (skip header row 0 and TOTAL last row)
             while len(t.rows) > 2:
                 t._tbl.remove(t.rows[-2]._tr)
-            # Add ingredient rows before TOTAL
             total_tr = t.rows[-1]._tr
             for row_data in rows:
                 new_row = copy.deepcopy(t.rows[0])
@@ -469,20 +446,19 @@ def generate_doc(template_id, data):
             'XX de febrero del 202x': fecha,
         })
         sab_map = {
-            'SABORIZANTE NATURAL': ('sab_natural', '% '),
-            'SABORIZANTE IDENTICO NATURAL': ('sab_identico', '% '),
+            'SABORIZANTE NATURAL': 'sab_natural',
+            'SABORIZANTE IDENTICO NATURAL': 'sab_identico',
         }
         if doc.tables:
             for row in doc.tables[0].rows[1:]:
                 key = row.cells[0].text.strip()
-                for lbl, (fid, suffix) in sab_map.items():
+                for lbl, fid in sab_map.items():
                     if lbl in key:
                         cell = row.cells[1]
                         for p in cell.paragraphs:
                             for r in p.runs: r.text=''
                             if p.runs: p.runs[0].text = str(data.get(fid,'')) + ' %'
                             else: p.add_run(str(data.get(fid,'')) + ' %')
-            # Total row
             for row in doc.tables[0].rows:
                 if 'TOTAL' in row.cells[0].text:
                     cell = row.cells[1]
@@ -491,6 +467,9 @@ def generate_doc(template_id, data):
                         val = str(data.get('sab_total','')) + ' %'
                         if p.runs: p.runs[0].text = val
                         else: p.add_run(val)
+
+    # Apply firmante to ALL templates at the end
+    apply_firmante(doc, data)
 
     buf = BytesIO()
     doc.save(buf)
@@ -538,20 +517,14 @@ def convert_pdf():
     tmp_pdf = tmp_docx.replace('.docx', '.pdf')
     f.save(tmp_docx)
     try:
-        result = subprocess.run(
-            ['python', 'scripts/office/soffice.py', '--headless', '--convert-to', 'pdf', tmp_docx, '--outdir', '/tmp'],
-            capture_output=True, text=True, cwd=os.path.dirname(__file__)
-        )
-        # fallback: try libreoffice directly
-        if not os.path.exists(tmp_pdf):
-            subprocess.run(['libreoffice', '--headless', '--convert-to', 'pdf', '--outdir', '/tmp', tmp_docx],
-                           capture_output=True)
+        subprocess.run(['libreoffice', '--headless', '--convert-to', 'pdf', '--outdir', '/tmp', tmp_docx],
+                       capture_output=True)
         if os.path.exists(tmp_pdf):
             return send_file(tmp_pdf, as_attachment=True,
                              download_name=f.filename.replace('.docx', '.pdf'),
                              mimetype='application/pdf')
         else:
-            return jsonify({'error': 'Conversión fallida', 'detail': result.stderr}), 500
+            return jsonify({'error': 'Conversión fallida. LibreOffice no está disponible en el servidor.'}), 500
     finally:
         if os.path.exists(tmp_docx): os.remove(tmp_docx)
 
