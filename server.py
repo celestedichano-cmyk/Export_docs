@@ -40,7 +40,8 @@ TEMPLATES = {
         "file": "Template_CERTIFICADO_DE_CODIFICACIO_N_DE_FECHA_Y_LOTE.docx",
         "fields": [
             {"id": "producto", "label": "Nombre del producto", "type": "text", "placeholder": "NOT Burger 113g"},
-            {"id": "dia_correlativo", "label": "Día correlativo del año (lote)", "type": "text", "placeholder": "159"},
+            {"id": "copacker_abrev", "label": "Abreviatura del copacker", "type": "text", "placeholder": "PB"},
+            {"id": "copacker_nombre", "label": "Nombre completo del copacker", "type": "text", "placeholder": "Pacific Blu"},
             {"id": "fecha", "label": "Fecha del documento", "type": "text", "placeholder": today_es()},
         ] + FIRMANTE_FIELDS,
     },
@@ -246,13 +247,23 @@ def generate_doc(template_id, data):
     fecha = data.get('fecha', today_es())
 
     if template_id == 'certificado_codificacion':
-        dia = data.get('dia_correlativo', 'XXX')
-        replace_all(doc, {
-            'PB XXX': f'PB {dia}',
-            'XX de XX del 2025': fecha,
-        })
-        # Replace product name carefully (XXX appears also in lote row)
-        replace_all(doc, {'XXX': producto})
+        abrev = data.get('copacker_abrev', 'xx')
+        nombre = data.get('copacker_nombre', 'xx')
+        # First fill table row 3 (copacker fields use 'xx' lowercase)
+        if doc.tables:
+            t = doc.tables[0]
+            row = t.rows[3]
+            # Col 1 (Estructura): 'xx XXX (HH:MM)' -> replace xx only
+            cell1 = row.cells[1]
+            for p in cell1.paragraphs:
+                replace_in_paragraph(p, {'xx ': abrev + ' '})
+            # Col 2 (Significado): replace PB (abrev) and Pacificblu (nombre completo)
+            cell2 = row.cells[2]
+            for p in cell2.paragraphs:
+                replace_in_paragraph(p, {'PB': abrev, 'Pacificblu': nombre})
+        # Then replace product name in body text and date (not in table)
+        for para in doc.paragraphs:
+            replace_in_paragraph(para, {'XXX': producto, 'XX de XX del 2025': fecha})
 
     elif template_id == 'certificado_proceso':
         replace_all(doc, {'NOTXXX': producto, 'XX de mayo de 2025': fecha})
@@ -527,6 +538,39 @@ def convert_pdf():
             return jsonify({'error': 'Conversión fallida. LibreOffice no está disponible en el servidor.'}), 500
     finally:
         if os.path.exists(tmp_docx): os.remove(tmp_docx)
+
+@app.route('/api/import-docx', methods=['POST'])
+def import_docx():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+    f = request.files['file']
+    try:
+        doc = Document(f)
+        campos = {}
+        # Strategy 1: read a two-column table (campo | valor)
+        for table in doc.tables:
+            for row in table.rows:
+                if len(row.cells) >= 2:
+                    campo = row.cells[0].text.strip()
+                    valor = row.cells[1].text.strip()
+                    if campo and valor and campo != 'campo' and campo != 'Campo':
+                        campos[campo] = valor
+        # Strategy 2: read paragraphs with "campo: valor" or "campo | valor" format
+        if not campos:
+            for para in doc.paragraphs:
+                txt = para.text.strip()
+                for sep in ['|', ':']:
+                    if sep in txt:
+                        parts = txt.split(sep, 1)
+                        if len(parts) == 2:
+                            campo = parts[0].strip()
+                            valor = parts[1].strip()
+                            if campo and valor:
+                                campos[campo] = valor
+                        break
+        return jsonify(campos)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
