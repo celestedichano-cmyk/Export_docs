@@ -477,20 +477,26 @@ function onDocGenerated(blob, filename) {
 document.getElementById('drive-btn').addEventListener('click', async () => {
   if (!lastGeneratedBlob) { showToast('Primero generá un documento', 'error'); return; }
   if (!driveCredentials) {
-    // Save pending upload to sessionStorage then redirect to OAuth
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      sessionStorage.setItem('pending_blob', e.target.result);
-      sessionStorage.setItem('pending_filename', lastGeneratedFilename);
-      sessionStorage.setItem('pending_producto', collectData().producto || '');
-    };
-    reader.readAsDataURL(lastGeneratedBlob);
-    setTimeout(async () => {
-      const res = await fetch('/oauth/start');
+    // Upload file to server temp storage, then redirect to OAuth
+    const btn = document.getElementById('drive-btn');
+    btn.textContent = 'Conectando con Drive...';
+    btn.disabled = true;
+    try {
+      const formData = new FormData();
+      formData.append('file', lastGeneratedBlob, lastGeneratedFilename);
+      formData.append('producto', collectData().producto || '');
+      const res = await fetch('/api/save-temp', { method: 'POST', body: formData });
       const data = await res.json();
-      if (data.error) { showToast('Error: ' + data.error, 'error'); return; }
-      window.location.href = data.url;
-    }, 200);
+      if (data.error) throw new Error(data.error);
+      const authRes = await fetch('/oauth/start?file_id=' + data.file_id);
+      const authData = await authRes.json();
+      if (authData.error) throw new Error(authData.error);
+      window.location.href = authData.url;
+    } catch(e) {
+      showToast('Error: ' + e.message, 'error');
+      btn.disabled = false;
+      btn.textContent = 'Subir a Drive';
+    }
   } else {
     await uploadToDrive();
   }
@@ -500,26 +506,26 @@ document.getElementById('drive-btn').addEventListener('click', async () => {
 window.addEventListener('load', async () => {
   const params = new URLSearchParams(window.location.search);
   const creds = params.get('creds');
-  if (creds) {
+  const fileId = params.get('file_id');
+  if (creds && fileId) {
     try {
       driveCredentials = JSON.parse(decodeURIComponent(creds));
-      // Restore pending upload
-      const blobData = sessionStorage.getItem('pending_blob');
-      const filename = sessionStorage.getItem('pending_filename');
-      const producto = sessionStorage.getItem('pending_producto');
-      if (blobData && filename) {
-        const res = await fetch(blobData);
-        lastGeneratedBlob = await res.blob();
-        lastGeneratedFilename = filename;
-        sessionStorage.removeItem('pending_blob');
-        sessionStorage.removeItem('pending_filename');
-        sessionStorage.removeItem('pending_producto');
-        // Clean URL
-        window.history.replaceState({}, '', '/');
-        await uploadToDrive();
-      }
+      window.history.replaceState({}, '', '/');
+      // Upload the temp file to Drive
+      const res = await fetch('/api/upload-drive-temp', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ creds: driveCredentials, file_id: fileId })
+      });
+      const result = await res.json();
+      if (result.error) throw new Error(result.error);
+      showToast('Archivo subido a Drive exitosamente', 'success');
+      const link = document.getElementById('drive-link');
+      link.href = result.link;
+      link.style.display = 'inline';
+      document.getElementById('drive-btn').style.display = 'inline-flex';
     } catch(e) {
-      showToast('Error restaurando sesión: ' + e.message, 'error');
+      showToast('Error subiendo a Drive: ' + e.message, 'error');
     }
   }
 });
