@@ -542,6 +542,20 @@ def convert_pdf():
     finally:
         if os.path.exists(tmp_docx): os.remove(tmp_docx)
 
+@app.route('/api/debug-lo')
+def debug_lo():
+    import shutil, subprocess
+    result = {}
+    result['which_libreoffice'] = shutil.which('libreoffice')
+    result['which_soffice'] = shutil.which('soffice')
+    try:
+        find = subprocess.run(['find', '/', '-name', 'soffice', '-type', 'f'], 
+                              capture_output=True, text=True, timeout=10)
+        result['find_soffice'] = find.stdout.strip().split()
+    except Exception as e:
+        result['find_error'] = str(e)
+    return jsonify(result)
+
 @app.route('/api/import-docx', methods=['POST'])
 def import_docx():
     if 'file' not in request.files:
