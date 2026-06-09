@@ -249,19 +249,15 @@ def generate_doc(template_id, data):
     if template_id == 'certificado_codificacion':
         abrev = data.get('copacker_abrev', 'xx')
         nombre = data.get('copacker_nombre', 'xx')
-        # First fill table row 3 (copacker fields use 'xx' lowercase)
         if doc.tables:
             t = doc.tables[0]
             row = t.rows[3]
-            # Col 1 (Estructura): 'PB XXX (HH:MM)' -> replace PB with abrev
             cell1 = row.cells[1]
             for p in cell1.paragraphs:
                 replace_in_paragraph(p, {'PB': abrev})
-            # Col 2 (Significado): replace PB (abrev) and Pacificblu (nombre completo)
             cell2 = row.cells[2]
             for p in cell2.paragraphs:
                 replace_in_paragraph(p, {'PB': abrev, 'Pacificblu': nombre})
-        # Then replace product name in body text and date (not in table)
         for para in doc.paragraphs:
             replace_in_paragraph(para, {'XXX': producto, 'XX de XX del 2025': fecha})
 
@@ -528,7 +524,6 @@ def convert_pdf():
     tmp_pdf = tmp_docx.replace('.docx', '.pdf')
     f.save(tmp_docx)
     try:
-        # Find libreoffice binary (path varies by environment)
         import shutil
         lo_bin = shutil.which('libreoffice') or shutil.which('soffice') or '/usr/bin/libreoffice'
         subprocess.run([lo_bin, '--headless', '--convert-to', 'pdf', '--outdir', '/tmp', tmp_docx],
@@ -549,7 +544,7 @@ def debug_lo():
     result['which_libreoffice'] = shutil.which('libreoffice')
     result['which_soffice'] = shutil.which('soffice')
     try:
-        find = subprocess.run(['find', '/', '-name', 'soffice', '-type', 'f'], 
+        find = subprocess.run(['find', '/', '-name', 'soffice', '-type', 'f'],
                               capture_output=True, text=True, timeout=10)
         result['find_soffice'] = find.stdout.strip().split()
     except Exception as e:
@@ -564,7 +559,6 @@ def import_docx():
     try:
         doc = Document(f)
         campos = {}
-        # Strategy 1: read a two-column table (campo | valor)
         for table in doc.tables:
             for row in table.rows:
                 if len(row.cells) >= 2:
@@ -572,7 +566,6 @@ def import_docx():
                     valor = row.cells[1].text.strip()
                     if campo and valor and campo != 'campo' and campo != 'Campo':
                         campos[campo] = valor
-        # Strategy 2: read paragraphs with "campo: valor" or "campo | valor" format
         if not campos:
             for para in doc.paragraphs:
                 txt = para.text.strip()
@@ -589,6 +582,18 @@ def import_docx():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/import-ft', methods=['POST'])
+def import_ft():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+    f = request.files['file']
+    try:
+        from ft_extractor import extract_ft
+        data = extract_ft(f.read())
+        return jsonify(data)
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
 
 
 # ─── Google Drive OAuth routes ────────────────────────────────────────────────
