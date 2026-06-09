@@ -263,6 +263,20 @@ def parse_rows(text, separator='|'):
             rows.append(parts)
     return rows
 
+def set_cell_value(cell, val, font_name='NotFont Display', font_size=127000):
+    """Write a value into a cell preserving NotFont Display typography."""
+    for p in cell.paragraphs:
+        for r in p.runs:
+            r.text = ''
+        if p.runs:
+            p.runs[0].text = str(val)
+            p.runs[0].font.name = font_name
+            p.runs[0].font.size = font_size
+        else:
+            run = p.add_run(str(val))
+            run.font.name = font_name
+            run.font.size = font_size
+
 
 # ─── Per-template generation ─────────────────────────────────────────────────
 
@@ -293,6 +307,15 @@ def generate_doc(template_id, data):
         replace_all(doc, {'NOTXXX': producto, 'XX de mayo de 2025': fecha})
 
     elif template_id == 'certificado_empaque':
+        # Replace tipo de envase BEFORE replace_all so 'XXX' isn't clobbered by producto
+        found = 0
+        for para in doc.paragraphs:
+            if 'Tipo de envase:' in para.text:
+                found += 1
+                if found == 1:
+                    replace_in_paragraph(para, {'Tipo de envase: XXX': f'Tipo de envase: {data.get("tipo_envase_primario","")}'})
+                elif found == 2:
+                    replace_in_paragraph(para, {'Tipo de envase: XXX': f'Tipo de envase: {data.get("tipo_envase_secundario","")}'})
         replace_all(doc, {'XXX': producto, 'XX de XX del 2025': fecha})
         tables = doc.tables
         if len(tables) >= 1:
@@ -309,11 +332,7 @@ def generate_doc(template_id, data):
                 label = row.cells[0].text.strip()
                 for lbl, val in mapping_p:
                     if lbl in label:
-                        cell = row.cells[1]
-                        for p in cell.paragraphs:
-                            for r in p.runs: r.text=''
-                            if p.runs: p.runs[0].text = str(val)
-                            else: p.add_run(str(val))
+                        set_cell_value(row.cells[1], val)
         if len(tables) >= 2:
             t2 = tables[1]
             mapping_s = [
@@ -329,19 +348,7 @@ def generate_doc(template_id, data):
                 label = row.cells[0].text.strip()
                 for lbl, val in mapping_s:
                     if lbl in label:
-                        cell = row.cells[1]
-                        for p in cell.paragraphs:
-                            for r in p.runs: r.text=''
-                            if p.runs: p.runs[0].text = str(val)
-                            else: p.add_run(str(val))
-        found = 0
-        for para in doc.paragraphs:
-            if 'Tipo de envase:' in para.text:
-                found += 1
-                if found == 1:
-                    replace_in_paragraph(para, {'Tipo de envase: XXX': f'Tipo de envase: {data.get("tipo_envase_primario","")}'})
-                elif found == 2:
-                    replace_in_paragraph(para, {'Tipo de envase: XXX': f'Tipo de envase: {data.get("tipo_envase_secundario","")}'})
+                        set_cell_value(row.cells[1], val)
 
     elif template_id == 'informe_analisis':
         replace_all(doc, {'XXX': producto, 'XX de XX del 2025': fecha})
