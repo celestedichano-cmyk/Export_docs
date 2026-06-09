@@ -170,16 +170,29 @@ TEMPLATES = {
 # ─── Document generation helpers ─────────────────────────────────────────────
 
 def replace_in_paragraph(para, replacements):
+    """
+    Replace text preserving per-run formatting (font, bold, size etc.).
+    Tries per-run replacement first; falls back to collapsing runs only
+    when a placeholder spans multiple runs.
+    """
     full = ''.join(r.text for r in para.runs)
-    changed = False
+    if not any(old in full for old in replacements):
+        return
+    # Per-run replacement (preserves formatting)
+    for run in para.runs:
+        for old, new in replacements.items():
+            if old in run.text:
+                run.text = run.text.replace(old, new)
+    # Fallback: if placeholder still present it spans multiple runs
+    full_after = ''.join(r.text for r in para.runs)
     for old, new in replacements.items():
-        if old in full:
-            full = full.replace(old, new)
-            changed = True
-    if changed and para.runs:
-        para.runs[0].text = full
-        for r in para.runs[1:]:
-            r.text = ''
+        if old in full_after:
+            collapsed = full_after.replace(old, new)
+            if para.runs:
+                para.runs[0].text = collapsed
+                for r in para.runs[1:]:
+                    r.text = ''
+            break
 
 def replace_all(doc, replacements):
     for para in doc.paragraphs:
@@ -194,6 +207,20 @@ def replace_all(doc, replacements):
             if hdr:
                 for para in hdr.paragraphs:
                     replace_in_paragraph(para, replacements)
+
+def set_producto_bold(doc, producto):
+    """After replacing XXX with producto, find those runs and force bold=True."""
+    for para in doc.paragraphs:
+        for run in para.runs:
+            if run.text == producto:
+                run.bold = True
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for para in cell.paragraphs:
+                    for run in para.runs:
+                        if run.text == producto:
+                            run.bold = True
 
 def apply_firmante(doc, data):
     """Replace firmante name and cargo in all paragraphs."""
@@ -243,7 +270,7 @@ def generate_doc(template_id, data):
     path = os.path.join(TEMPLATES_DIR, tmpl['file'])
     doc = Document(path)
 
-    producto = data.get('producto', 'XXX')
+    producto = data.get('producto', 'XXX').upper()
     fecha = data.get('fecha', today_es())
 
     if template_id == 'certificado_codificacion':
@@ -409,7 +436,9 @@ def generate_doc(template_id, data):
                     funcion = pairs[i][1] if len(pairs[i]) > 1 else ''
                     if len(para.runs) >= 2:
                         para.runs[0].text = nombre
-                        para.runs[1].text = funcion
+                        para.runs[0].bold = True
+                        para.runs[1].text = '\n' + funcion
+                        para.runs[1].bold = False
                     else:
                         replace_in_paragraph(para, {'ADITIVO': nombre, 'Función tecnológica': funcion})
 
@@ -470,12 +499,18 @@ def generate_doc(template_id, data):
                 if 'TOTAL' in row.cells[0].text:
                     cell = row.cells[1]
                     for p in cell.paragraphs:
-                        for r in p.runs: r.text=''
                         val = str(data.get('sab_total','')) + ' %'
-                        if p.runs: p.runs[0].text = val
-                        else: p.add_run(val)
+                        if p.runs:
+                            bold_val = p.runs[0].bold
+                            for r in p.runs: r.text=''
+                            p.runs[0].text = val
+                            p.runs[0].bold = bold_val
+                        else:
+                            r = p.add_run(val)
+                            r.bold = True
 
     # Apply firmante to ALL templates at the end
+    set_producto_bold(doc, producto)
     apply_firmante(doc, data)
 
     buf = BytesIO()
