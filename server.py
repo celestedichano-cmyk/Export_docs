@@ -127,7 +127,8 @@ TEMPLATES = {
         "file": "Template_INFORME_FUNCIONALIDAD_ADITIVOS.docx",
         "fields": [
             {"id": "producto", "label": "Nombre del producto", "type": "text", "placeholder": "NOT Burger 113g"},
-            {"id": "ingredientes", "label": "Lista de ingredientes (uno por línea, aditivos en MAYÚSCULAS)", "type": "textarea", "placeholder": "Agua\nProteína de soya\nACEITE DE GIRASOL\nSal\nAROMATIZANTE NATURAL"},
+            {"id": "ingredientes", "label": "Lista de ingredientes (uno por línea)", "type": "textarea", "placeholder": "Agua\nProteína de soya\nAceite de girasol\nSal\nAromati­zante natural"},
+            {"id": "aditivos_filas", "label": "Nº de filas que son aditivos (ej: 3, 5, 8)", "type": "text", "placeholder": "3, 5"},
             {"id": "aditivos", "label": "Aditivos y su función (Nombre | Función, uno por línea)", "type": "textarea", "placeholder": "ACEITE DE GIRASOL | Agente de relleno\nAROMATIZANTE NATURAL | Aromatizante"},
             {"id": "fecha", "label": "Fecha del documento", "type": "text", "placeholder": today_es()},
         ] + FIRMANTE_FIELDS,
@@ -413,26 +414,65 @@ def generate_doc(template_id, data):
 
     elif template_id == 'informe_aditivos':
         replace_all(doc, {'XX': producto, 'XX de XX del 2025': fecha})
-        if doc.tables and data.get('ingredientes'):
+        if data.get('ingredientes'):
             lines = [l.strip() for l in data['ingredientes'].split('\n') if l.strip()]
-            t = doc.tables[0]
-            while len(t.rows) > 0:
-                t._tbl.remove(t.rows[-1]._tr)
-            for ing in lines:
-                row = OxmlElement('w:tr')
-                tc = OxmlElement('w:tc')
-                p = OxmlElement('w:p')
-                r = OxmlElement('w:r')
-                t_el = OxmlElement('w:t')
-                t_el.text = ing
-                r.append(t_el); p.append(r); tc.append(p); row.append(tc)
-                t._tbl.append(row)
+            # Parse which row numbers are aditivos (1-based)
+            aditivos_filas = set()
+            for part in data.get('aditivos_filas', '').split(','):
+                part = part.strip()
+                if part.isdigit():
+                    aditivos_filas.add(int(part))
+            # Table is inside sdtContent — find via lxml xpath
+            WNS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+            tbls = doc.element.body.findall(f'.//{{{WNS}}}tbl')
+            if tbls:
+                tbl_el = tbls[0]
+                # Remove all existing rows
+                for tr in tbl_el.findall(f'{{{WNS}}}tr'):
+                    tbl_el.remove(tr)
+                for idx, ing in enumerate(lines, start=1):
+                    is_aditivo = idx in aditivos_filas
+                    texto = ing.upper()
+                    tr = OxmlElement('w:tr')
+                    trPr = OxmlElement('w:trPr')
+                    trHeight = OxmlElement('w:trHeight')
+                    trHeight.set(qn('w:val'), '315')
+                    trHeight.set(qn('w:hRule'), 'atLeast')
+                    trPr.append(trHeight)
+                    tr.append(trPr)
+                    tc = OxmlElement('w:tc')
+                    tcPr = OxmlElement('w:tcPr')
+                    if is_aditivo:
+                        shd = OxmlElement('w:shd')
+                        shd.set(qn('w:val'), 'clear')
+                        shd.set(qn('w:color'), 'auto')
+                        shd.set(qn('w:fill'), 'f3f3f3')
+                        tcPr.append(shd)
+                    tc.append(tcPr)
+                    p = OxmlElement('w:p')
+                    r = OxmlElement('w:r')
+                    rPr = OxmlElement('w:rPr')
+                    rFonts = OxmlElement('w:rFonts')
+                    rFonts.set(qn('w:ascii'), 'NotFont Display')
+                    rFonts.set(qn('w:hAnsi'), 'NotFont Display')
+                    rPr.append(rFonts)
+                    if is_aditivo:
+                        rPr.append(OxmlElement('w:b'))
+                        rPr.append(OxmlElement('w:bCs'))
+                    r.append(rPr)
+                    t_el = OxmlElement('w:t')
+                    t_el.text = texto
+                    r.append(t_el)
+                    p.append(r)
+                    tc.append(p)
+                    tr.append(tc)
+                    tbl_el.append(tr)
         if data.get('aditivos'):
             pairs = parse_rows(data['aditivos'])
             aditivo_paras = [p for p in doc.paragraphs if 'ADITIVO' in p.text]
             for i, para in enumerate(aditivo_paras):
                 if i < len(pairs):
-                    nombre = pairs[i][0] if len(pairs[i]) > 0 else ''
+                    nombre = pairs[i][0].upper() if len(pairs[i]) > 0 else ''
                     funcion = pairs[i][1] if len(pairs[i]) > 1 else ''
                     if len(para.runs) >= 2:
                         para.runs[0].text = nombre
