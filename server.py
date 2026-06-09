@@ -413,7 +413,8 @@ def generate_doc(template_id, data):
                             else: p.add_run(str(data.get(fid,'')))
 
     elif template_id == 'informe_aditivos':
-        replace_all(doc, {'XX': producto, 'XX de XX del 2025': fecha})
+        replace_all(doc, {'XX de XX del 2025': fecha})
+        replace_all(doc, {'XX': producto})
         if data.get('ingredientes'):
             lines = [l.strip() for l in data['ingredientes'].split('\n') if l.strip()]
             # Parse which row numbers are aditivos (1-based)
