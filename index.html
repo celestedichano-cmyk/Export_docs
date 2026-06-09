@@ -478,6 +478,17 @@ document.getElementById('docx-input').addEventListener('change', async e => {
   e.target.value = '';
 });
 
+// Saborizantes: auto-calcular total
+document.addEventListener('input', e => {
+  if (!currentTmpl || currentTmpl !== 'reporte_saborizantes') return;
+  if (e.target.id === 'f_sab_natural' || e.target.id === 'f_sab_identico') {
+    const nat = parseFloat(document.getElementById('f_sab_natural')?.value) || 0;
+    const ide = parseFloat(document.getElementById('f_sab_identico')?.value) || 0;
+    const total = document.getElementById('f_sab_total');
+    if (total) total.value = (nat + ide).toFixed(2).replace(/\.?0+$/, '');
+  }
+});
+
 // Ficha Técnica (PDF) import
 document.getElementById('ft-input').addEventListener('change', async e => {
   const file = e.target.files[0];
