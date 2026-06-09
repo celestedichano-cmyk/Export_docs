@@ -278,7 +278,44 @@ def set_cell_value(cell, val, font_name='NotFont Display', font_size=127000):
             run.font.size = font_size
 
 
-# ─── Per-template generation ─────────────────────────────────────────────────
+# ─── Per-template generation ─────────────────────────────────────────────
+
+def set_cell_value_xml(cell_el, val, WNS):
+    """Write value into an lxml cell element with NotFont Display font."""
+    runs = cell_el.findall(f'.//{{{WNS}}}r')
+    if runs:
+        for r in runs:
+            for t_el in r.findall(f'{{{WNS}}}t'):
+                t_el.text = ''
+        t_el = runs[0].find(f'{{{WNS}}}t')
+        if t_el is None:
+            t_el = OxmlElement('w:t')
+            runs[0].append(t_el)
+        t_el.text = val
+        rPr = runs[0].find(f'{{{WNS}}}rPr')
+        if rPr is None:
+            rPr = OxmlElement('w:rPr')
+            runs[0].insert(0, rPr)
+        rFonts = rPr.find(f'{{{WNS}}}rFonts')
+        if rFonts is None:
+            rFonts = OxmlElement('w:rFonts')
+            rPr.insert(0, rFonts)
+        rFonts.set(f'{{{WNS}}}ascii', 'NotFont Display')
+        rFonts.set(f'{{{WNS}}}hAnsi', 'NotFont Display')
+    else:
+        paras = cell_el.findall(f'.//{{{WNS}}}p')
+        if paras:
+            r_new = OxmlElement('w:r')
+            rPr = OxmlElement('w:rPr')
+            rFonts = OxmlElement('w:rFonts')
+            rFonts.set(f'{{{WNS}}}ascii', 'NotFont Display')
+            rFonts.set(f'{{{WNS}}}hAnsi', 'NotFont Display')
+            rPr.append(rFonts)
+            r_new.append(rPr)
+            t_el = OxmlElement('w:t')
+            t_el.text = val
+            r_new.append(t_el)
+            paras[0].append(r_new)
 
 def generate_doc(template_id, data):
     tmpl = TEMPLATES[template_id]
@@ -357,39 +394,38 @@ def generate_doc(template_id, data):
             fill_table_rows(tables[0], parse_rows(data['fq_rows']))
         if len(tables) > 1 and data.get('mb_rows'):
             fill_table_rows(tables[1], parse_rows(data['mb_rows']))
-        if len(tables) > 2:
-            sensorial = {
-                'Apariencia': data.get('apariencia',''),
-                'Color': data.get('color',''),
-                'Aroma': data.get('aroma',''),
-                'Sabor': data.get('sabor',''),
-                'Textura': data.get('textura',''),
-            }
-            for row in tables[2].rows[1:]:
-                key = row.cells[0].text.strip()
-                if key in sensorial:
-                    cell = row.cells[2]
-                    for p in cell.paragraphs:
-                        for r in p.runs: r.text=''
-                        if p.runs: p.runs[0].text = sensorial[key]
-                        else: p.add_run(sensorial[key])
-        if len(tables) > 3:
-            contam = {
-                'Plomo (Pb)': data.get('pb',''),
-                'Cobre (Cu)': data.get('cu',''),
-                'Arsénico (As)': data.get('as_',''),
-                'Estaño (Sn)': data.get('sn',''),
-                'Hierro (Fe)': data.get('fe',''),
-            }
-            for row in tables[3].rows[1:]:
-                key = row.cells[0].text.strip()
+        # Tables 2 (sensorial) and 3 (contaminantes) are in sdtContent — use xpath
+        WNS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+        all_tbls = doc.element.body.findall(f'.//{{{WNS}}}tbl')
+        sensorial = {
+            'Apariencia': data.get('apariencia',''),
+            'Color': data.get('color',''),
+            'Aroma': data.get('aroma',''),
+            'Sabor': data.get('sabor',''),
+            'Textura': data.get('textura',''),
+        }
+        if len(all_tbls) > 2:
+            for row in all_tbls[2].findall(f'{{{WNS}}}tr')[1:]:
+                cells = row.findall(f'{{{WNS}}}tc')
+                if not cells: continue
+                key = ''.join(t.text for t in cells[0].findall(f'.//{{{WNS}}}t') if t.text).strip()
+                if key in sensorial and len(cells) > 2:
+                    set_cell_value_xml(cells[2], sensorial[key], WNS)
+        contam = {
+            'Plomo (Pb)': data.get('pb',''),
+            'Cobre (Cu)': data.get('cu',''),
+            'Arsénico (As)': data.get('as_',''),
+            'Estaño (Sn)': data.get('sn',''),
+            'Hierro (Fe)': data.get('fe',''),
+        }
+        if len(all_tbls) > 3:
+            for row in all_tbls[3].findall(f'{{{WNS}}}tr')[1:]:
+                cells = row.findall(f'{{{WNS}}}tc')
+                if not cells: continue
+                key = ''.join(t.text for t in cells[0].findall(f'.//{{{WNS}}}t') if t.text).strip()
                 for k, v in contam.items():
-                    if k in key:
-                        cell = row.cells[2]
-                        for p in cell.paragraphs:
-                            for r in p.runs: r.text=''
-                            if p.runs: p.runs[0].text = str(v)
-                            else: p.add_run(str(v))
+                    if k in key and len(cells) > 2:
+                        set_cell_value_xml(cells[2], str(v), WNS)
 
     elif template_id == 'informe_nutricional':
         replace_all(doc, {'XXX': producto, 'XX de XX del 2025': fecha})
@@ -449,21 +485,7 @@ def generate_doc(template_id, data):
                             rFonts.set(f'{{{WNS}}}ascii', 'NotFont Display')
                             rFonts.set(f'{{{WNS}}}hAnsi', 'NotFont Display')
                         else:
-                            # No run — create one inside the paragraph
-                            paras = cell1.findall(f'.//{{{WNS}}}p')
-                            if paras:
-                                from docx.oxml import OxmlElement
-                                r_new = OxmlElement('w:r')
-                                rPr = OxmlElement('w:rPr')
-                                rFonts = OxmlElement('w:rFonts')
-                                rFonts.set(f'{{{WNS}}}ascii', 'NotFont Display')
-                                rFonts.set(f'{{{WNS}}}hAnsi', 'NotFont Display')
-                                rPr.append(rFonts)
-                                r_new.append(rPr)
-                                t_el = OxmlElement('w:t')
-                                t_el.text = val
-                                r_new.append(t_el)
-                                paras[0].append(r_new)
+                            set_cell_value_xml(cell1, val, WNS)
 
     elif template_id == 'informe_aditivos':
         replace_all(doc, {'XX de XX del 2025': fecha})
@@ -571,32 +593,39 @@ def generate_doc(template_id, data):
             'xx de febrero del 202x': fecha,
             'xx de febrero del 202X': fecha,
         })
-        if doc.tables and data.get('fibra_total'):
-            for row in doc.tables[0].rows[1:]:
-                cell = row.cells[1]
-                for p in cell.paragraphs:
-                    for r in p.runs: r.text=''
-                    if p.runs: p.runs[0].text = str(data['fibra_total'])
-                    else: p.add_run(str(data['fibra_total']))
+        if data.get('fibra_total'):
+            WNS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+            fibra_tbls = doc.element.body.findall(f'.//{{{WNS}}}tbl')
+            if fibra_tbls:
+                fibra_tbl = fibra_tbls[0]
+                rows = fibra_tbl.findall(f'{{{WNS}}}tr')
+                if len(rows) > 1:
+                    cells = rows[1].findall(f'{{{WNS}}}tc')
+                    if len(cells) > 1:
+                        set_cell_value_xml(cells[1], str(data['fibra_total']), WNS)
 
     elif template_id == 'reporte_formula':
         replace_all(doc, {'XXX': producto, 'XX de XX del 2025': fecha})
-        if doc.tables and data.get('formula_rows'):
-            rows = parse_rows(data['formula_rows'])
-            t = doc.tables[0]
-            while len(t.rows) > 2:
-                t._tbl.remove(t.rows[-2]._tr)
-            total_tr = t.rows[-1]._tr
-            for row_data in rows:
-                new_row = copy.deepcopy(t.rows[0])
-                for i, val in enumerate(row_data):
-                    if i < len(new_row.cells):
-                        cell = new_row.cells[i]
-                        for p in cell.paragraphs:
-                            for r in p.runs: r.text=''
-                            if p.runs: p.runs[0].text = str(val)
-                            else: p.add_run(str(val))
-                t._tbl.insertBefore(new_row._tr, total_tr)
+        if data.get('formula_rows'):
+            WNS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+            formula_tbls = doc.element.body.findall(f'.//{{{WNS}}}tbl')
+            if formula_tbls:
+                tbl_el = formula_tbls[0]
+                rows_el = tbl_el.findall(f'{{{WNS}}}tr')
+                data_rows = parse_rows(data['formula_rows'])
+                # Keep first row as template, remove data rows except last (total)
+                while len(tbl_el.findall(f'{{{WNS}}}tr')) > 2:
+                    all_tr = tbl_el.findall(f'{{{WNS}}}tr')
+                    tbl_el.remove(all_tr[-2])
+                total_tr = tbl_el.findall(f'{{{WNS}}}tr')[-1]
+                template_tr = tbl_el.findall(f'{{{WNS}}}tr')[0]
+                for row_data in data_rows:
+                    new_tr = copy.deepcopy(template_tr)
+                    cells = new_tr.findall(f'{{{WNS}}}tc')
+                    for i, val in enumerate(row_data):
+                        if i < len(cells):
+                            set_cell_value_xml(cells[i], str(val), WNS)
+                    tbl_el.insert(list(tbl_el).index(total_tr), new_tr)
 
     elif template_id == 'reporte_saborizantes':
         replace_all(doc, {
@@ -608,29 +637,31 @@ def generate_doc(template_id, data):
             'SABORIZANTE NATURAL': 'sab_natural',
             'SABORIZANTE IDENTICO NATURAL': 'sab_identico',
         }
-        if doc.tables:
-            for row in doc.tables[0].rows[1:]:
-                key = row.cells[0].text.strip()
+        WNS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+        sab_tbls = doc.element.body.findall(f'.//{{{WNS}}}tbl')
+        if sab_tbls:
+            tbl_el = sab_tbls[0]
+            for row in tbl_el.findall(f'{{{WNS}}}tr')[1:]:
+                cells = row.findall(f'{{{WNS}}}tc')
+                if len(cells) < 2: continue
+                key = ''.join(t.text for t in cells[0].findall(f'.//{{{WNS}}}t') if t.text).strip()
                 for lbl, fid in sab_map.items():
                     if lbl in key:
-                        cell = row.cells[1]
-                        for p in cell.paragraphs:
-                            for r in p.runs: r.text=''
-                            if p.runs: p.runs[0].text = str(data.get(fid,'')) + ' %'
-                            else: p.add_run(str(data.get(fid,'')) + ' %')
-            for row in doc.tables[0].rows:
-                if 'TOTAL' in row.cells[0].text:
-                    cell = row.cells[1]
-                    for p in cell.paragraphs:
-                        val = str(data.get('sab_total','')) + ' %'
-                        if p.runs:
-                            bold_val = p.runs[0].bold
-                            for r in p.runs: r.text=''
-                            p.runs[0].text = val
-                            p.runs[0].bold = bold_val
-                        else:
-                            r = p.add_run(val)
-                            r.bold = True
+                        set_cell_value_xml(cells[1], str(data.get(fid,'')) + ' %', WNS)
+                if 'TOTAL' in key:
+                    val = str(data.get('sab_total','')) + ' %'
+                    # Preserve bold on TOTAL row
+                    runs = cells[1].findall(f'.//{{{WNS}}}r')
+                    if runs:
+                        for r in runs:
+                            for t_el in r.findall(f'{{{WNS}}}t'): t_el.text = ''
+                        t_el = runs[0].find(f'{{{WNS}}}t')
+                        if t_el is None:
+                            t_el = OxmlElement('w:t')
+                            runs[0].append(t_el)
+                        t_el.text = val
+                    else:
+                        set_cell_value_xml(cells[1], val, WNS)
 
     # Apply firmante to ALL templates at the end
     set_producto_bold(doc, producto)
