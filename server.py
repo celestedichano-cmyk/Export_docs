@@ -451,6 +451,11 @@ def generate_doc(template_id, data):
                         tcPr.append(shd)
                     tc.append(tcPr)
                     p = OxmlElement('w:p')
+                    pPr_ing = OxmlElement('w:pPr')
+                    jc_ing = OxmlElement('w:jc')
+                    jc_ing.set(qn('w:val'), 'center')
+                    pPr_ing.append(jc_ing)
+                    p.append(pPr_ing)
                     r = OxmlElement('w:r')
                     rPr = OxmlElement('w:rPr')
                     rFonts = OxmlElement('w:rFonts')
@@ -482,6 +487,12 @@ def generate_doc(template_id, data):
                         para.runs[1].bold = False
                     else:
                         replace_in_paragraph(para, {'ADITIVO': nombre, 'Función tecnológica': funcion})
+                    # Fix justification: "both" causes character spacing on short text
+                    pPr = para._p.find(qn('w:pPr'))
+                    if pPr is not None:
+                        jc = pPr.find(qn('w:jc'))
+                        if jc is not None:
+                            jc.set(qn('w:val'), 'left')
 
     elif template_id == 'reporte_fibra':
         replace_all(doc, {
