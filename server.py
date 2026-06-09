@@ -408,16 +408,62 @@ def generate_doc(template_id, data):
             'Fibra (g)': 'fibra',
             'Sodio (mg)': 'sodio',
         }
-        if doc.tables:
-            for row in doc.tables[0].rows[1:]:
-                key = row.cells[0].text.strip()
+        # Table is inside sdtContent — access via lxml xpath
+        WNS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+        nut_tbls = doc.element.body.findall(f'.//{{{WNS}}}tbl')
+        if nut_tbls:
+            nut_tbl = nut_tbls[0]
+            for row in nut_tbl.findall(f'{{{WNS}}}tr')[1:]:
+                cells = row.findall(f'{{{WNS}}}tc')
+                if len(cells) < 2:
+                    continue
+                # Get label from col[0]
+                key = ''.join(t.text for t in cells[0].findall(f'.//{{{WNS}}}t') if t.text).strip()
                 for lbl, fid in nut_map.items():
-                    if lbl in key:
-                        cell = row.cells[1]
-                        for p in cell.paragraphs:
-                            for r in p.runs: r.text=''
-                            if p.runs: p.runs[0].text = str(data.get(fid,''))
-                            else: p.add_run(str(data.get(fid,'')))
+                    if lbl.strip() in key:
+                        val = str(data.get(fid, ''))
+                        # Write into col[1] preserving/setting font
+                        cell1 = cells[1]
+                        # Find existing run or create one
+                        runs = cell1.findall(f'.//{{{WNS}}}r')
+                        if runs:
+                            # Clear all runs then set first
+                            for r in runs:
+                                for t_el in r.findall(f'{{{WNS}}}t'):
+                                    t_el.text = ''
+                            t_el = runs[0].find(f'{{{WNS}}}t')
+                            if t_el is None:
+                                from docx.oxml import OxmlElement
+                                t_el = OxmlElement('w:t')
+                                runs[0].append(t_el)
+                            t_el.text = val
+                            # Force font
+                            rPr = runs[0].find(f'{{{WNS}}}rPr')
+                            if rPr is None:
+                                rPr = OxmlElement('w:rPr')
+                                runs[0].insert(0, rPr)
+                            rFonts = rPr.find(f'{{{WNS}}}rFonts')
+                            if rFonts is None:
+                                rFonts = OxmlElement('w:rFonts')
+                                rPr.insert(0, rFonts)
+                            rFonts.set(f'{{{WNS}}}ascii', 'NotFont Display')
+                            rFonts.set(f'{{{WNS}}}hAnsi', 'NotFont Display')
+                        else:
+                            # No run — create one inside the paragraph
+                            paras = cell1.findall(f'.//{{{WNS}}}p')
+                            if paras:
+                                from docx.oxml import OxmlElement
+                                r_new = OxmlElement('w:r')
+                                rPr = OxmlElement('w:rPr')
+                                rFonts = OxmlElement('w:rFonts')
+                                rFonts.set(f'{{{WNS}}}ascii', 'NotFont Display')
+                                rFonts.set(f'{{{WNS}}}hAnsi', 'NotFont Display')
+                                rPr.append(rFonts)
+                                r_new.append(rPr)
+                                t_el = OxmlElement('w:t')
+                                t_el.text = val
+                                r_new.append(t_el)
+                                paras[0].append(r_new)
 
     elif template_id == 'informe_aditivos':
         replace_all(doc, {'XX de XX del 2025': fecha})
