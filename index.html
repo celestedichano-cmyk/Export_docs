@@ -478,6 +478,46 @@ document.getElementById('docx-input').addEventListener('change', async e => {
   e.target.value = '';
 });
 
+// Aditivos: auto-completar nombres en campo aditivos cuando cambia filas o ingredientes
+function syncAditivosField() {
+  if (!currentTmpl || currentTmpl !== 'informe_aditivos') return;
+  const filasEl = document.getElementById('f_aditivos_filas');
+  const ingEl = document.getElementById('f_ingredientes');
+  const aditivosEl = document.getElementById('f_aditivos');
+  if (!filasEl || !ingEl || !aditivosEl) return;
+
+  const filas = filasEl.value.split(',')
+    .map(s => parseInt(s.trim()))
+    .filter(n => !isNaN(n) && n > 0);
+
+  const lines = ingEl.value.split('\n').map(l => l.trim()).filter(Boolean);
+
+  if (filas.length === 0) return;
+
+  // Build new aditivos lines preserving existing functions if already typed
+  const existing = {};
+  aditivosEl.value.split('\n').forEach(line => {
+    const parts = line.split('|');
+    if (parts.length >= 2) {
+      existing[parts[0].trim().toUpperCase()] = parts[1].trim();
+    }
+  });
+
+  const newLines = filas.map(n => {
+    const nombre = (lines[n - 1] || '').toUpperCase();
+    const funcion = existing[nombre] || '';
+    return funcion ? `${nombre} | ${funcion}` : `${nombre} | `;
+  });
+
+  aditivosEl.value = newLines.join('\n');
+}
+
+document.addEventListener('input', e => {
+  if (e.target.id === 'f_aditivos_filas' || e.target.id === 'f_ingredientes') {
+    syncAditivosField();
+  }
+});
+
 // Saborizantes: auto-calcular total
 document.addEventListener('input', e => {
   if (!currentTmpl || currentTmpl !== 'reporte_saborizantes') return;
