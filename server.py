@@ -443,6 +443,24 @@ def generate_doc(template_id, data):
                     tr.append(trPr)
                     tc = OxmlElement('w:tc')
                     tcPr = OxmlElement('w:tcPr')
+                    # Borders: top=gray, others=white (matches template)
+                    tcBorders = OxmlElement('w:tcBorders')
+                    for side, color in [('top','cccccc'),('left','ffffff'),('bottom','ffffff'),('right','ffffff')]:
+                        b = OxmlElement(f'w:{side}')
+                        b.set(qn('w:val'), 'single')
+                        b.set(qn('w:sz'), '4')
+                        b.set(qn('w:space'), '0')
+                        b.set(qn('w:color'), color)
+                        tcBorders.append(b)
+                    tcPr.append(tcBorders)
+                    # Cell margins
+                    tcMar = OxmlElement('w:tcMar')
+                    for side in ['top','left','bottom','right']:
+                        m = OxmlElement(f'w:{side}')
+                        m.set(qn('w:w'), '40')
+                        m.set(qn('w:type'), 'dxa')
+                        tcMar.append(m)
+                    tcPr.append(tcMar)
                     if is_aditivo:
                         shd = OxmlElement('w:shd')
                         shd.set(qn('w:val'), 'clear')
