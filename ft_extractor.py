@@ -21,7 +21,21 @@ def _clean(text):
 
 
 def _get_table(pdf, page_num):
-    """Devuelve la primera tabla de la página indicada (1-based)."""
+    """
+    Devuelve la primera tabla de la página lógica indicada (1-based).
+    Busca por contenido "Página X de 3" para tolerar páginas en blanco
+    intercaladas que desplacen la numeración física.
+    """
+    target = f"Página {page_num} de 3"
+    for page in pdf.pages:
+        tables = page.extract_tables()
+        if not tables:
+            continue
+        # Check header row for page marker
+        header = str(tables[0][0]) if tables[0] else ""
+        if target in header:
+            return tables[0]
+    # Fallback: positional (original behavior)
     return pdf.pages[page_num - 1].extract_tables()[0]
 
 
@@ -37,69 +51,152 @@ def _find_value(table, key):
     return ""
 
 
+def _remove_parens(s):
+    """Remove all parenthetical content from a string."""
+    result_s = ""
+    depth = 0
+    for ch in s:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif depth == 0:
+            result_s += ch
+    return result_s
+
+
+def _parse_ingredientes(raw):
+    """Parse ingredient string: remove parens, split by comma and 'y'."""
+    clean = _remove_parens(raw)
+    items = []
+    for part in clean.split(","):
+        part = part.strip().rstrip(".")
+        if " y " in part.lower():
+            subparts = re.split(r' y ', part, flags=re.IGNORECASE)
+            for sp in subparts:
+                sp = sp.strip().rstrip(".")
+                if sp:
+                    items.append(sp)
+        else:
+            if part:
+                items.append(part)
+    return "\n".join(items)
+
+
+def _first_number(text):
+    """Extract first numeric value from a string."""
+    if not text:
+        return ""
+    m = re.search(r'[\d]+(?:[.,][\d]+)?', str(text))
+    return m.group(0).replace(',', '.') if m else ""
+
+
 def _extract_pagina1(table):
-    """Extrae producto y datos nutricionales de página 1."""
+    """Extrae producto, ingredientes y datos nutricionales de página 1."""
     result = {}
 
     # --- Nombre del producto ---
     result["producto"] = _find_value(table, "Nombre Comercial")
 
-    # --- Ingredientes (desde "Descripción del producto") ---
-    raw_ing = _find_value(table, "Descripción del producto")
-    if raw_ing:
-        # Remove parenthetical content (including nested)
-        def remove_parens(s):
-            result_s = ""
-            depth = 0
-            for ch in s:
-                if ch == "(":
-                    depth += 1
-                elif ch == ")":
-                    depth -= 1
-                elif depth == 0:
-                    result_s += ch
-            return result_s
-        clean = remove_parens(raw_ing)
-        # Split by comma, then handle " y " separator on last segment
-        items = []
-        for part in clean.split(","):
-            part = part.strip().rstrip(".")
-            # Handle " y " joining last two ingredients without comma
-            if " y " in part.lower():
-                subparts = re.split(r' y ', part, flags=re.IGNORECASE)
-                for sp in subparts:
-                    sp = sp.strip().rstrip(".")
-                    if sp:
-                        items.append(sp)
-            else:
-                if part:
-                    items.append(part)
-        result["ingredientes"] = "\n".join(items)
-
-    # --- Tabla nutricional ---
-    # La fila de Energía tiene los valores 100g apilados en una sola celda
-    # Ejemplo: '274\n34\n10\n3.0\n5.3\n0.6\n0.0\n0.0\n12\n4.3\n0.1\n0.0\n17\n16\n0.4\n293'
-    nutrientes_orden = [
-        "energia", "proteina", "grasa_total", "grasa_sat",
-        "grasa_mono", "grasa_poli", "grasa_trans", "colesterol",
-        "carb_disp", "azucares",
-        # azúcar y azúcar añadido se ignoran (no son campos del template)
-        # pero están en la secuencia, así que los leemos y descartamos
-        "_azucar_g", "_azucar_anadido",
-        "fibra", "_fibra_soluble", "_fibra_insoluble", "sodio"
-    ]
-
-    for row in table:
-        if row and row[0] and "Energía" in str(row[0]) and row[1]:
-            valores_raw = str(row[1]).split("\n")
-            for i, campo in enumerate(nutrientes_orden):
-                if i < len(valores_raw) and not campo.startswith("_"):
-                    result[campo] = valores_raw[i].strip()
+    # --- Ingredientes ---
+    # "Ingredientes" row may contain legal text (CHOCO) or actual list (PEANUT)
+    # "Descripción del producto" may contain legal text too
+    # Heuristic: the real ingredient list contains commas and no "SUPLEMENTO"
+    raw_ing = ""
+    for key in ["Ingredientes", "Descripción del producto"]:
+        candidate = _find_value(table, key)
+        if candidate and "," in candidate and "SUPLEMENTO" not in candidate:
+            raw_ing = candidate
             break
+    if raw_ing:
+        result["ingredientes"] = _parse_ingredientes(raw_ing)
 
-    # fibra_total: mismo valor que "fibra" extraído arriba
+    # --- Tabla nutricional: estrategia robusta ---
+    # Busca cada nutriente por nombre de fila y extrae el valor de 100g.
+    # Funciona aunque la estructura de columnas varíe entre FTs.
+    nut_search = {
+        "energia":     ["Energía"],
+        "proteina":    ["Proteínas"],
+        "grasa_total": ["Grasa total"],
+        "grasa_sat":   ["Grasas saturadas"],
+        "grasa_mono":  ["Grasas monoinsat"],
+        "grasa_poli":  ["Grasas poliinsat"],
+        "grasa_trans": ["Grasas trans"],
+        "colesterol":  ["Colesterol"],
+        "carb_disp":   ["Carbohidratos disp"],
+        "azucares":    ["Azúcares totales"],
+        "fibra":       ["Fibra dietética total"],
+        "sodio":       ["Sodio"],
+    }
+
+    # Build a flat map: keyword → campo
+    kw_map = {}
+    for campo, keywords in nut_search.items():
+        for kw in keywords:
+            kw_map[kw] = campo
+
+    # Collect all text across all cells per row
+    # Strategy: for each nutrient row, find the first standalone number
+    # that looks like a 100g value (not in a multi-value stacked cell for the
+    # first occurrence which is always 100g)
+    
+    # First pass: try the "stacked values in Energía row" pattern (original FT)
+    for row in table:
+        if row and row[0] and "Energía" in str(row[0]):
+            # Find the cell with stacked values (contains \n with multiple numbers)
+            for cell in row[1:]:
+                if cell and "\n" in str(cell):
+                    vals = str(cell).split("\n")
+                    nutrientes_orden = [
+                        "energia", "proteina", "grasa_total", "grasa_sat",
+                        "grasa_mono", "grasa_poli", "grasa_trans", "colesterol",
+                        "carb_disp", "azucares", "_az_g", "_az_an",
+                        "fibra", "_fib_s", "_fib_i", "sodio"
+                    ]
+                    if len(vals) >= 10:  # Enough values to be the stacked column
+                        for i, campo in enumerate(nutrientes_orden):
+                            if i < len(vals) and not campo.startswith("_"):
+                                result[campo] = vals[i].strip()
+                        result["fibra_total"] = result.get("fibra", "")
+                        return result
+
+    # Second pass: row-by-row search (new FT layout)
+    # col[1] = 100g values, col[2] = 1 porción values
+    # Only use col[1] — col[2] are porción values, not 100g
+    for row in table:
+        if not row or not row[0]:
+            continue
+        cell0 = str(row[0])
+
+        matched_campo = None
+        for kw, campo in kw_map.items():
+            if kw in cell0:
+                matched_campo = campo
+                break
+
+        if matched_campo and matched_campo not in result:
+            # Only use col[1] for 100g values
+            cell1 = row[1] if len(row) > 1 else None
+            if cell1 and str(cell1).strip() and str(cell1) != "None":
+                cell_str = str(cell1).strip()
+                if "\n" in cell_str:
+                    val = _first_number(cell_str.split("\n")[0])
+                else:
+                    val = _first_number(cell_str)
+                if val:
+                    result[matched_campo] = val
+
+        # Fibra row: col[1] stacked = fibra, fibra_sol, fibra_insol, sodio (100g)
+        if "Fibra dietética total" in cell0:
+            cell1 = row[1] if len(row) > 1 else None
+            if cell1 and "\n" in str(cell1):
+                lines = str(cell1).strip().split("\n")
+                if len(lines) >= 1 and "fibra" not in result:
+                    result["fibra"] = _first_number(lines[0])
+                if len(lines) >= 4:
+                    result["sodio"] = _first_number(lines[3])
+
     result["fibra_total"] = result.get("fibra", "")
-
     return result
 
 
