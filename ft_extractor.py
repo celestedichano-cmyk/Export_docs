@@ -44,6 +44,38 @@ def _extract_pagina1(table):
     # --- Nombre del producto ---
     result["producto"] = _find_value(table, "Nombre Comercial")
 
+    # --- Ingredientes (desde "Descripción del producto") ---
+    raw_ing = _find_value(table, "Descripción del producto")
+    if raw_ing:
+        # Remove parenthetical content (including nested)
+        def remove_parens(s):
+            result_s = ""
+            depth = 0
+            for ch in s:
+                if ch == "(":
+                    depth += 1
+                elif ch == ")":
+                    depth -= 1
+                elif depth == 0:
+                    result_s += ch
+            return result_s
+        clean = remove_parens(raw_ing)
+        # Split by comma, then handle " y " separator on last segment
+        items = []
+        for part in clean.split(","):
+            part = part.strip().rstrip(".")
+            # Handle " y " joining last two ingredients without comma
+            if " y " in part.lower():
+                subparts = re.split(r' y ', part, flags=re.IGNORECASE)
+                for sp in subparts:
+                    sp = sp.strip().rstrip(".")
+                    if sp:
+                        items.append(sp)
+            else:
+                if part:
+                    items.append(part)
+        result["ingredientes"] = "\n".join(items)
+
     # --- Tabla nutricional ---
     # La fila de Energía tiene los valores 100g apilados en una sola celda
     # Ejemplo: '274\n34\n10\n3.0\n5.3\n0.6\n0.0\n0.0\n12\n4.3\n0.1\n0.0\n17\n16\n0.4\n293'
@@ -171,14 +203,14 @@ def _extract_pagina3(table):
             in_secundario = False
             # Extraer tipo entre paréntesis
             m = re.search(r'\(([^)]+)\)', cell0)
-            result["tipo_envase_primario"] = m.group(1) if m else ""
+            result["tipo_envase_primario"] = m.group(1).title() if m else ""
             continue
 
         if "ENVASE SECUNDARIO" in cell0:
             in_primario = False
             in_secundario = True
             m = re.search(r'\(([^)]+)\)', cell0)
-            result["tipo_envase_secundario"] = m.group(1) if m else ""
+            result["tipo_envase_secundario"] = m.group(1).title() if m else ""
             continue
 
         if "CAJA MASTER" in cell0:
