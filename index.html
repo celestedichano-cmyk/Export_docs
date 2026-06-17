@@ -241,32 +241,14 @@
 
       <div class="pptx-section" id="pptx-section" style="display:none">
         <h3 style="font-size:15px; font-weight:600; margin-bottom:6px;">Diagrama de proceso</h3>
-        <p style="font-size:13px; color:var(--muted); margin-bottom:14px;">Subí el PPTX de procesos de producción, buscá el producto y elegí el diagrama correspondiente.</p>
+        <p style="font-size:13px; color:var(--muted); margin-bottom:14px;">Subí la imagen del diagrama de flujo exportada desde el PPTX (formato .png o .jpg).</p>
         <label class="btn btn-secondary" style="cursor:pointer; font-size:13px; padding:7px 14px; display:inline-flex;">
-          Cargar .pptx
-          <input type="file" id="pptx-input" accept=".pptx">
+          Cargar imagen del diagrama
+          <input type="file" id="diagrama-input" accept=".png,.jpg,.jpeg">
         </label>
-        <span class="ft-loading" id="pptx-loading">
-          <span class="ft-spinner"></span> Procesando PPTX...
-        </span>
-        <div id="pptx-picker" style="display:none; margin-top:14px;">
-          <div class="field" style="margin-bottom:10px;">
-            <label for="pptx-search">Buscar producto</label>
-            <input type="text" id="pptx-search" placeholder="Escribí el nombre del producto...">
-          </div>
-          <div class="field">
-            <label for="pptx-select">O elegí de la lista completa</label>
-            <select id="pptx-select" style="padding:9px 12px; border:1px solid var(--border); border-radius:8px; font-size:14px; font-family:var(--font); background:var(--card); color:var(--accent); width:100%;">
-              <option value="">— Seleccionar diagrama —</option>
-            </select>
-          </div>
-          <div id="pptx-preview" style="display:none; margin-top:14px;">
-            <p style="font-size:12.5px; font-weight:500; color:var(--muted); margin-bottom:6px;">Vista previa:</p>
-            <img id="pptx-preview-img" style="max-width:100%; border:1px solid var(--border); border-radius:8px;">
-            <span class="ft-loading" id="pptx-render-loading" style="margin-top:8px;">
-              <span class="ft-spinner"></span> Generando vista previa...
-            </span>
-          </div>
+        <div id="diagrama-preview" style="display:none; margin-top:14px;">
+          <p style="font-size:12.5px; font-weight:500; color:var(--muted); margin-bottom:6px;">Vista previa:</p>
+          <img id="diagrama-preview-img" style="max-width:100%; border:1px solid var(--border); border-radius:8px;">
         </div>
       </div>
 
@@ -423,7 +405,7 @@ function collectData() {
     if (el) data[f.id] = el.value.trim() || el.placeholder || '';
   });
   if (currentTmpl === 'certificado_proceso') {
-    const img = document.getElementById('pptx-preview-img');
+    const img = document.getElementById('diagrama-preview-img');
     if (img && img.dataset.b64) {
       data.imagen_proceso_b64 = img.dataset.b64;
     }
@@ -605,77 +587,23 @@ document.getElementById('ft-input').addEventListener('change', async e => {
   }
 });
 
-// ─── Diagrama de Proceso (pptx) ──────────────────────────────────────────────
-let pptxId = null;
-let pptxTitles = [];
-let selectedSlideNum = null;
-
-document.getElementById('pptx-input').addEventListener('change', async e => {
+// ─── Diagrama de Proceso (imagen) ────────────────────────────────────────────
+document.getElementById('diagrama-input').addEventListener('change', e => {
   const file = e.target.files[0];
   if (!file) return;
-  const loading = document.getElementById('pptx-loading');
-  loading.classList.add('show');
-  const formData = new FormData();
-  formData.append('file', file);
-  try {
-    const res = await fetch('/api/pptx-upload', { method: 'POST', body: formData });
-    if (!res.ok) throw new Error('Error procesando el PPTX');
-    const result = await res.json();
-    if (result.error) throw new Error(result.error);
-    pptxId = result.pptx_id;
-    pptxTitles = result.titles;
-    const select = document.getElementById('pptx-select');
-    select.innerHTML = '<option value="">— Seleccionar diagrama —</option>' +
-      pptxTitles.map(t => `<option value="${t.slide_num}">${t.title}</option>`).join('');
-    document.getElementById('pptx-picker').style.display = 'block';
-    showToast('PPTX cargado (' + pptxTitles.length + ' diagramas)', 'success');
-  } catch(err) {
-    showToast('Error leyendo PPTX: ' + err.message, 'error');
-  } finally {
-    loading.classList.remove('show');
-    e.target.value = '';
-  }
-});
-
-document.getElementById('pptx-search').addEventListener('input', e => {
-  const q = e.target.value.trim().toLowerCase();
-  if (!q) return;
-  const match = pptxTitles.find(t => t.title.toLowerCase().includes(q));
-  if (match) {
-    document.getElementById('pptx-select').value = match.slide_num;
-  }
-});
-
-document.getElementById('pptx-select').addEventListener('change', async e => {
-  const slideNum = e.target.value;
-  if (!slideNum || !pptxId) {
-    document.getElementById('pptx-preview').style.display = 'none';
-    selectedSlideNum = null;
-    return;
-  }
-  selectedSlideNum = slideNum;
-  const previewBox = document.getElementById('pptx-preview');
-  const renderLoading = document.getElementById('pptx-render-loading');
-  previewBox.style.display = 'block';
-  renderLoading.classList.add('show');
-  document.getElementById('pptx-preview-img').style.display = 'none';
-  try {
-    const res = await fetch('/api/pptx-slide-image', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ pptx_id: pptxId, slide_num: slideNum })
-    });
-    const result = await res.json();
-    if (result.error) throw new Error(result.error);
-    const img = document.getElementById('pptx-preview-img');
-    img.src = 'data:image/png;base64,' + result.image_b64;
-    img.style.display = 'block';
-    img.dataset.b64 = result.image_b64;
-  } catch(err) {
-    showToast('Error generando vista previa: ' + err.message, 'error');
-  } finally {
-    renderLoading.classList.remove('show');
-  }
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const dataUrl = ev.target.result;
+    const b64 = dataUrl.split(',')[1];
+    const img = document.getElementById('diagrama-preview-img');
+    img.src = dataUrl;
+    img.dataset.b64 = b64;
+    document.getElementById('diagrama-preview').style.display = 'block';
+    showToast('Imagen del diagrama cargada', 'success');
+  };
+  reader.onerror = () => showToast('Error leyendo la imagen', 'error');
+  reader.readAsDataURL(file);
+  e.target.value = '';
 });
 
 // ─── Google Drive integration ────────────────────────────────────────────────
