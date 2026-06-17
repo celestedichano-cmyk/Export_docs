@@ -347,15 +347,21 @@ def generate_doc(template_id, data):
         if img_b64:
             import base64
             img_bytes = base64.b64decode(img_b64)
-            # Find the paragraph containing the placeholder inline image
-            for p in doc.paragraphs:
-                if '<pic:pic' in p._p.xml or 'graphicFrame' in p._p.xml:
-                    # Remove existing image runs, add new one in the same paragraph
-                    for run in p.runs:
-                        run._r.getparent().remove(run._r)
-                    run = p.add_run()
-                    run.add_picture(BytesIO(img_bytes), width=Inches(6))
+            # Find the blank paragraph between the intro text and "Se extiende..."
+            paras = doc.paragraphs
+            intro_idx = None
+            extiende_idx = None
+            for i, p in enumerate(paras):
+                if 'diagrama de flujo' in p.text.lower():
+                    intro_idx = i
+                if 'se extiende el presente' in p.text.lower():
+                    extiende_idx = i
                     break
+            if intro_idx is not None and extiende_idx is not None and extiende_idx > intro_idx + 1:
+                # Use the first blank paragraph right after the intro text
+                target_p = paras[intro_idx + 1]
+                run = target_p.add_run()
+                run.add_picture(BytesIO(img_bytes), width=Inches(6))
 
     elif template_id == 'certificado_empaque':
         # Replace tipo de envase BEFORE replace_all so 'XXX' isn't clobbered by producto
