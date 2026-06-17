@@ -234,8 +234,15 @@
           📄 Cargar FT (PDF)
           <input type="file" id="ft-input" accept=".pdf">
         </label>
+        <label class="btn btn-secondary" id="dossier-label" style="display:none; cursor:pointer; font-size:13px; padding:7px 14px;">
+          📊 Cargar Dossier (xlsx)
+          <input type="file" id="dossier-input" accept=".xlsx,.xls">
+        </label>
         <span class="ft-loading" id="ft-loading">
           <span class="ft-spinner"></span> Procesando FT...
+        </span>
+        <span class="ft-loading" id="dossier-loading">
+          <span class="ft-spinner"></span> Procesando Dossier...
         </span>
       </div>
 
@@ -325,6 +332,7 @@ function renderForm(id) {
 
   // Show pptx diagram section only for certificado_proceso
   document.getElementById('pptx-section').style.display = (id === 'certificado_proceso') ? 'block' : 'none';
+  document.getElementById('dossier-label').style.display = (id === 'reporte_formula') ? 'inline-flex' : 'none';
 
   const form = document.getElementById('doc-form');
   form.innerHTML = '';
@@ -581,6 +589,37 @@ document.getElementById('ft-input').addEventListener('change', async e => {
     }
   } catch(err) {
     showToast('Error leyendo FT: ' + err.message, 'error');
+  } finally {
+    loading.classList.remove('show');
+    e.target.value = '';
+  }
+});
+
+// Dossier (.xlsx) import — Reporte Fórmula
+document.getElementById('dossier-input').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const loading = document.getElementById('dossier-loading');
+  loading.classList.add('show');
+  const formData = new FormData();
+  formData.append('file', file);
+  try {
+    const res = await fetch('/api/import-dossier', { method: 'POST', body: formData });
+    if (!res.ok) throw new Error('Error procesando el Dossier');
+    const campos = await res.json();
+    if (campos.error) throw new Error(campos.error);
+    let encontrados = 0;
+    Object.entries(campos).forEach(([campo, valor]) => {
+      const el = document.getElementById('f_' + campo);
+      if (el && valor) { el.value = valor; encontrados++; }
+    });
+    if (encontrados > 0) {
+      showToast('Datos importados desde Dossier (' + encontrados + ' campos)', 'success');
+    } else {
+      showToast('No se encontraron campos reconocibles en el Dossier', 'error');
+    }
+  } catch(err) {
+    showToast('Error leyendo Dossier: ' + err.message, 'error');
   } finally {
     loading.classList.remove('show');
     e.target.value = '';
