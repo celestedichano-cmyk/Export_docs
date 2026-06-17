@@ -12,6 +12,7 @@ from datetime import datetime
 from io import BytesIO
 from flask import Flask, request, jsonify, send_file, send_from_directory
 from docx import Document
+from docx.shared import Inches
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 
@@ -342,6 +343,19 @@ def generate_doc(template_id, data):
 
     elif template_id == 'certificado_proceso':
         replace_all(doc, {'NOTXXX': producto, 'XX de mayo de 2025': fecha})
+        img_b64 = data.get('imagen_proceso_b64')
+        if img_b64:
+            import base64
+            img_bytes = base64.b64decode(img_b64)
+            # Find the paragraph containing the placeholder inline image
+            for p in doc.paragraphs:
+                if '<pic:pic' in p._p.xml or 'graphicFrame' in p._p.xml:
+                    # Remove existing image runs, add new one in the same paragraph
+                    for run in p.runs:
+                        run._r.getparent().remove(run._r)
+                    run = p.add_run()
+                    run.add_picture(BytesIO(img_bytes), width=Inches(6))
+                    break
 
     elif template_id == 'certificado_empaque':
         # Replace tipo de envase BEFORE replace_all so 'XXX' isn't clobbered by producto
@@ -780,6 +794,98 @@ def import_ft():
         from ft_extractor import extract_ft
         data = extract_ft(f.read())
         return jsonify(data)
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
+
+
+# ─── Diagrama de Proceso (pptx) ──────────────────────────────────────────────
+
+def _get_slide_titles(pptx_bytes):
+    """Extract {slide_num, title} from each slide using topmost text as title."""
+    from pptx import Presentation
+    prs = Presentation(BytesIO(pptx_bytes))
+    titles = []
+    for i, slide in enumerate(prs.slides, 1):
+        candidates = []
+        for shape in slide.shapes:
+            if shape.has_text_frame and shape.text_frame.text.strip():
+                top = shape.top if shape.top is not None else 999999999
+                left = shape.left if shape.left is not None else 999999999
+                candidates.append((top, left, shape.text_frame.text.strip()))
+        candidates.sort(key=lambda x: (x[0], x[1]))
+        title = candidates[0][2] if candidates else f"Slide {i}"
+        titles.append({'slide_num': i, 'title': title})
+    return titles
+
+def _render_slide_image(pptx_bytes, slide_num):
+    """Render a single slide of a pptx to a PNG image, return bytes."""
+    import shutil, tempfile, glob
+    tmp_dir = tempfile.mkdtemp()
+    try:
+        pptx_path = os.path.join(tmp_dir, 'input.pptx')
+        with open(pptx_path, 'wb') as f:
+            f.write(pptx_bytes)
+        lo_bin = shutil.which('libreoffice') or shutil.which('soffice') or '/usr/bin/libreoffice'
+        subprocess.run([lo_bin, '--headless', '--convert-to', 'pdf', '--outdir', tmp_dir, pptx_path],
+                       capture_output=True, timeout=120)
+        pdf_path = os.path.join(tmp_dir, 'input.pdf')
+        if not os.path.exists(pdf_path):
+            raise Exception('No se pudo convertir el PPTX a PDF (LibreOffice no disponible)')
+        out_prefix = os.path.join(tmp_dir, 'slide')
+        pdftoppm_bin = shutil.which('pdftoppm') or '/usr/bin/pdftoppm'
+        subprocess.run([pdftoppm_bin, '-png', '-r', '200', '-f', str(slide_num), '-l', str(slide_num),
+                        pdf_path, out_prefix], capture_output=True, timeout=60)
+        matches = glob.glob(out_prefix + '*.png')
+        if not matches:
+            raise Exception(f'No se pudo renderizar la diapositiva {slide_num}')
+        with open(matches[0], 'rb') as f:
+            return f.read()
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+@app.route('/api/pptx-titles', methods=['POST'])
+def pptx_titles():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+    f = request.files['file']
+    try:
+        titles = _get_slide_titles(f.read())
+        return jsonify({'titles': titles})
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
+
+# Temp storage for uploaded pptx + selected slide image (in-memory, keyed by id)
+_temp_pptx = {}
+
+@app.route('/api/pptx-upload', methods=['POST'])
+def pptx_upload():
+    import uuid
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+    f = request.files['file']
+    try:
+        pptx_bytes = f.read()
+        titles = _get_slide_titles(pptx_bytes)
+        pptx_id = str(uuid.uuid4())
+        _temp_pptx[pptx_id] = pptx_bytes
+        return jsonify({'pptx_id': pptx_id, 'titles': titles})
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
+
+@app.route('/api/pptx-slide-image', methods=['POST'])
+def pptx_slide_image():
+    body = request.get_json()
+    pptx_id = body.get('pptx_id')
+    slide_num = body.get('slide_num')
+    if not pptx_id or pptx_id not in _temp_pptx:
+        return jsonify({'error': 'PPTX no encontrado. Subilo de nuevo.'}), 400
+    try:
+        img_bytes = _render_slide_image(_temp_pptx[pptx_id], int(slide_num))
+        import base64
+        return jsonify({'image_b64': base64.b64encode(img_bytes).decode('ascii')})
     except Exception as e:
         import traceback
         return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
