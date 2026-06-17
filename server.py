@@ -804,6 +804,19 @@ def import_ft():
         import traceback
         return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
 
+@app.route('/api/import-dossier', methods=['POST'])
+def import_dossier():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+    f = request.files['file']
+    try:
+        from dossier_extractor import extract_dossier
+        data = extract_dossier(f.read())
+        return jsonify(data)
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
+
 
 # ─── Google Drive OAuth routes ────────────────────────────────────────────────
 
