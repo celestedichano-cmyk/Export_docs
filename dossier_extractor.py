@@ -1,7 +1,7 @@
 """
 dossier_extractor.py
 Extrae datos de un Dossier de producto (.xlsx) de The Not Company
-para autocompletar el Reporte de Fórmula.
+para autocompletar el Reporte de Fórmula y el Informe de Aditivos.
 
 Uso:
     with open("dossier.xlsx", "rb") as f:
@@ -10,6 +10,7 @@ Uso:
 
 from openpyxl import load_workbook
 import io
+import unicodedata
 
 
 def _fmt_pct(value):
@@ -31,13 +32,27 @@ def _fmt_pct(value):
     return s if s else "0"
 
 
+def _normalize(text):
+    """Normaliza texto para comparación: sin tildes, minúsculas, sin espacios extra."""
+    if not text:
+        return ""
+    text = str(text).strip().lower()
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    return " ".join(text.split())
+
+
 def extract_dossier(xlsx_bytes):
     """
-    Extrae producto y fórmula ordenada (decreciente) de un Dossier .xlsx.
+    Extrae producto, fórmula ordenada y datos de aditivos de un Dossier .xlsx.
 
     Returns:
-        dict con 'producto' y 'formula_rows' (formato Ingrediente|% por línea,
-        listo para pegar en el campo del Reporte Fórmula).
+        dict con:
+        - 'producto'
+        - 'formula_rows' (Ingrediente|% por línea, para Reporte Fórmula)
+        - 'ingredientes' (uno por línea, orden decreciente, para Informe Aditivos)
+        - 'aditivos' (NOMBRE | Función, uno por línea)
+        - 'aditivos_filas' (números de fila 1-based que son aditivos, ej "8, 13")
     """
     result = {}
     wb = load_workbook(io.BytesIO(xlsx_bytes), data_only=True)
@@ -51,11 +66,12 @@ def extract_dossier(xlsx_bytes):
                 result["producto"] = str(value_cell.value).strip() if value_cell.value else ""
                 break
 
-    # --- Fórmula (orden decreciente, columnas X/Y) ---
     if "Fórmula" in wb.sheetnames:
         ws_formula = wb["Fórmula"]
-        rows = []
-        # Datos empiezan en fila 5; columna X=24, Y=25
+
+        # --- Fórmula (orden decreciente, columnas X/Y) → para Reporte Fórmula ---
+        formula_rows = []
+        ingredientes_orden = []
         r = 5
         while True:
             ing = ws_formula.cell(row=r, column=24).value
@@ -64,9 +80,39 @@ def extract_dossier(xlsx_bytes):
                 break
             ing_clean = str(ing).strip()
             pct_str = _fmt_pct(pct) if isinstance(pct, (int, float)) else ""
-            rows.append(f"{ing_clean} | {pct_str}")
+            formula_rows.append(f"{ing_clean} | {pct_str}")
+            ingredientes_orden.append(ing_clean)
             r += 1
-        result["formula_rows"] = "\n".join(rows)
+        result["formula_rows"] = "\n".join(formula_rows)
+
+        # --- Mapa nombre normalizado → función (desde tabla A/E) ---
+        funcion_por_ingrediente = {}
+        r = 4
+        while True:
+            ing = ws_formula.cell(row=r, column=1).value
+            if ing is None:
+                break
+            funcion = ws_formula.cell(row=r, column=5).value
+            if funcion:
+                funcion_por_ingrediente[_normalize(ing)] = str(funcion).strip()
+            r += 1
+        # "Saborizantes naturales" ya viene agrupado en columna X; si no está
+        # mapeado individualmente en A/E (porque ahí está desglosado en aromas),
+        # asignamos su función fija conocida.
+        funcion_por_ingrediente.setdefault(_normalize("Saborizantes naturales"), "Saborización")
+
+        # --- Cruce: ingredientes (orden decreciente) + aditivos + filas ---
+        aditivos_list = []
+        aditivos_filas = []
+        for idx, nombre in enumerate(ingredientes_orden, start=1):
+            funcion = funcion_por_ingrediente.get(_normalize(nombre), "")
+            if funcion:
+                aditivos_list.append(f"{nombre.upper()} | {funcion}")
+                aditivos_filas.append(str(idx))
+
+        result["ingredientes"] = "\n".join(ingredientes_orden)
+        result["aditivos"] = "\n".join(aditivos_list)
+        result["aditivos_filas"] = ", ".join(aditivos_filas)
 
     return result
 
@@ -84,3 +130,9 @@ if __name__ == "__main__":
     print("Producto:", data.get("producto"))
     print("\nFormula rows:")
     print(data.get("formula_rows"))
+    print("\nIngredientes (orden decreciente):")
+    print(data.get("ingredientes"))
+    print("\nAditivos:")
+    print(data.get("aditivos"))
+    print("\nAditivos filas:")
+    print(data.get("aditivos_filas"))
