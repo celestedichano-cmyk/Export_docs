@@ -177,6 +177,51 @@ def extract_dossier(xlsx_bytes):
         result["aditivos"] = "\n".join(aditivos_list)
         result["aditivos_filas"] = ", ".join(aditivos_filas)
 
+    # --- Información nutricional (hoja "Proyecto de rótulo...", columna 100 ml) ---
+    rotulo_sheet_name = next(
+        (s for s in wb.sheetnames if _normalize(s).startswith("proyecto de rotulo")),
+        None
+    )
+    if rotulo_sheet_name:
+        ws_rotulo = wb[rotulo_sheet_name]
+        # Mapa etiqueta normalizada → campo del template
+        nut_map = {
+            "energia (kcal)": "energia",
+            "proteinas (g)": "proteina",
+            "grasas totales (g)": "grasa_total",
+            "grasas saturadas (g)": "grasa_sat",
+            "grasas monoinsat. (g)": "grasa_mono",
+            "grasas poliinsat. (g)": "grasa_poli",
+            "grasas trans (g)": "grasa_trans",
+            "colesterol (mg)": "colesterol",
+            "carbohidratos totales (g)": "carb_totales",
+            "carbohidratos disp. (g)": "carb_disp",
+            "azucares totales (g)": "azucares",
+            "fibra dietetica total (g)": "fibra",
+            "sodio (mg)": "sodio",
+        }
+        # Buscar la columna "100 ml" o "100 g" — suele estar en una fila
+        # encabezado cercana a "INFORMACIÓN NUTRICIONAL"
+        col_100 = None
+        for row in ws_rotulo.iter_rows(min_row=1, max_row=ws_rotulo.max_row):
+            for cell in row:
+                if cell.value and _normalize(cell.value) in ("100 ml", "100 g", "100g", "100ml"):
+                    col_100 = cell.column
+                    break
+            if col_100:
+                break
+        if col_100:
+            for row in ws_rotulo.iter_rows(min_row=1, max_row=ws_rotulo.max_row, max_col=col_100):
+                label_cell = row[1] if len(row) > 1 else None
+                if label_cell is None or not label_cell.value:
+                    continue
+                label_norm = _normalize(label_cell.value)
+                campo = nut_map.get(label_norm)
+                if campo and campo not in result:
+                    val_cell = ws_rotulo.cell(row=label_cell.row, column=col_100)
+                    if isinstance(val_cell.value, (int, float)):
+                        result[campo] = str(val_cell.value)
+
     return result
 
 
