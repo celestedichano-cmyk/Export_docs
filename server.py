@@ -39,7 +39,7 @@ TEMPLATES = {
     "certificado_codificacion": {
         "label": "Certificado de Codificación de Fecha y Lote",
         "file": "Template_CERTIFICADO_DE_CODIFICACIO_N_DE_FECHA_Y_LOTE.docx",
-        "help": "Este template no tiene autocompletado automático. Completá los campos manualmente. Los campos de Estructura y Significado vienen prellenados con el formato estándar — editalos solo si tu caso es distinto.",
+        "help": "El nombre del producto se puede autocompletar cargando la Ficha Técnica (PDF) o el Dossier (xlsx). El resto de los campos se completa manualmente. Los campos de Estructura y Significado vienen prellenados con el formato estándar — editalos solo si tu caso es distinto.",
         "fields": [
             {"id": "producto", "label": "Nombre del producto", "type": "text", "placeholder": "NOT Burger 113g"},
             {"id": "estructura_elaboracion", "label": "Estructura — Fecha de Elaboración", "type": "text", "placeholder": "DD/MM/AA", "prefill": True},
@@ -55,7 +55,7 @@ TEMPLATES = {
     "certificado_empaque": {
         "label": "Certificado de Empaque",
         "file": "Template_CERTIFICADO_DE_EMPAQUE.docx",
-        "help": "Cargá la Ficha Técnica (PDF) para autocompletar el nombre del producto y las características físicas de los envases primario y secundario.",
+        "help": "Cargá la Ficha Técnica (PDF) para autocompletar el nombre del producto y las características físicas de los envases primario y secundario. El nombre del producto también se autocompleta con el Dossier (xlsx).",
         "fields": [
             {"id": "producto", "label": "Nombre del producto", "type": "text", "placeholder": "NOT Burger 113g"},
             {"id": "tipo_envase_primario", "label": "Tipo de envase primario", "type": "text", "placeholder": "Bolsa plástica"},
@@ -80,7 +80,7 @@ TEMPLATES = {
     "certificado_proceso": {
         "label": "Certificado de Proceso de Producción",
         "file": "Template_CERTIFICADO_PROCESO_DE_PRODUCCIO_N.docx",
-        "help": "Subí una imagen (.png/.jpg) del diagrama de flujo del producto, exportada manualmente desde el PPTX de procesos de producción.",
+        "help": "El nombre del producto se puede autocompletar cargando la Ficha Técnica (PDF) o el Dossier (xlsx). Además, subí una imagen (.png/.jpg) del diagrama de flujo, exportada manualmente desde el PPTX de procesos de producción.",
         "fields": [
             {"id": "producto", "label": "Nombre del producto (código)", "type": "text", "placeholder": "NOT20012"},
             {"id": "fecha", "label": "Fecha del documento", "type": "text", "placeholder": today_es()},
@@ -90,7 +90,7 @@ TEMPLATES = {
     "informe_analisis": {
         "label": "Informe de Análisis",
         "file": "Template_INFORME_ANA_LISIS.docx",
-        "help": "Cargá la Ficha Técnica (PDF) para autocompletar los parámetros sensoriales, fisicoquímicos y microbiológicos.",
+        "help": "Cargá la Ficha Técnica (PDF) para autocompletar el nombre del producto y los parámetros sensoriales, fisicoquímicos y microbiológicos. El nombre del producto también se autocompleta con el Dossier (xlsx).",
         "fields": [
             {"id": "producto", "label": "Nombre del producto", "type": "text", "placeholder": "NOT Burger 113g"},
             {"id": "fq_rows", "label": "Análisis fisicoquímicos (Parámetro | Metodología | Resultado, una fila por línea)", "type": "textarea", "placeholder": "pH | AOAC 943.02 | 6.8\nHumedad | AOAC 925.10 | 62%"},
@@ -112,7 +112,7 @@ TEMPLATES = {
     "informe_nutricional": {
         "label": "Informe de Análisis Nutricional",
         "file": "Template_INFORME_ANA_LISIS_NUTRICIONAL.docx",
-        "help": "Cargá la Ficha Técnica (PDF) para autocompletar la tabla de información nutricional (columna 100g).",
+        "help": "Cargá la Ficha Técnica (PDF) para autocompletar el nombre del producto y la tabla de información nutricional (columna 100g). El nombre del producto también se autocompleta con el Dossier (xlsx).",
         "fields": [
             {"id": "producto", "label": "Nombre del producto", "type": "text", "placeholder": "NOT Burger 113g"},
             {"id": "energia", "label": "Energía (kcal)", "type": "number", "placeholder": ""},
@@ -135,7 +135,7 @@ TEMPLATES = {
     "informe_aditivos": {
         "label": "Informe de Funcionalidad de Aditivos",
         "file": "Template_INFORME_FUNCIONALIDAD_ADITIVOS.docx",
-        "help": "Cargá la Ficha Técnica (PDF) para traer el listado de ingredientes de la sección Descripción del producto, o cargá el Dossier (xlsx) para traer la tabla de ingredientes en orden decreciente (hoja 'Fórmula'). Solo el Dossier indica además cuáles son aditivos y su función tecnológica; con la FT esos datos hay que completarlos manualmente.",
+        "help": "Cargá la Ficha Técnica (PDF) para autocompletar el nombre del producto y traer el listado de ingredientes de la sección Descripción del producto, o cargá el Dossier (xlsx) para autocompletar el nombre del producto y traer la tabla de ingredientes en orden decreciente (hoja 'Fórmula'). Solo el Dossier indica además cuáles son aditivos y su función tecnológica; con la FT esos datos hay que completarlos manualmente.",
         "fields": [
             {"id": "producto", "label": "Nombre del producto", "type": "text", "placeholder": "NOT Burger 113g"},
             {"id": "ingredientes", "label": "Lista de ingredientes (uno por línea)", "type": "textarea", "placeholder": "Agua\nProteína de soya\nAceite de girasol\nSal\nAromati­zante natural"},
@@ -148,7 +148,7 @@ TEMPLATES = {
     "reporte_fibra": {
         "label": "Reporte de Fibra Dietética Total",
         "file": "Template_REPORTE_FIBRA_DIETE_TICA_TOTAL.docx",
-        "help": "Cargá la Ficha Técnica (PDF) para autocompletar la Fibra Dietética Total (columna 100g de la tabla de información nutricional).",
+        "help": "Cargá la Ficha Técnica (PDF) para autocompletar el nombre del producto y la Fibra Dietética Total (columna 100g). El nombre del producto también se autocompleta con el Dossier (xlsx).",
         "fields": [
             {"id": "producto", "label": "Nombre del producto", "type": "text", "placeholder": "NOT Burger 113g"},
             {"id": "fibra_total", "label": "Fibra Dietética Total (g/100g)", "type": "number", "placeholder": ""},
@@ -159,7 +159,7 @@ TEMPLATES = {
     "reporte_formula": {
         "label": "Reporte de Fórmula de Producto",
         "file": "Template_REPORTE_FO_RMULA.docx",
-        "help": "Cargá el Dossier (xlsx) para autocompletar el producto y la lista de ingredientes con su % en orden decreciente (hoja 'Fórmula', tabla de orden decreciente).",
+        "help": "Cargá el Dossier (xlsx) para autocompletar el nombre del producto y la lista de ingredientes con su % en orden decreciente (hoja 'Fórmula', tabla de orden decreciente). El nombre del producto también se autocompleta con la Ficha Técnica (PDF).",
         "fields": [
             {"id": "producto", "label": "Nombre del producto", "type": "text", "placeholder": "NOT Burger 113g"},
             {"id": "formula_rows", "label": "Ingredientes y cantidades (Ingrediente | % en 100g, uno por línea)", "type": "textarea", "placeholder": "Agua | 55.0\nProteína de soya texturizada | 20.0\nAceite de girasol | 10.0"},
@@ -170,7 +170,7 @@ TEMPLATES = {
     "reporte_saborizantes": {
         "label": "Reporte de Saborizantes",
         "file": "Template__REPORTE_SABORIZANTES.docx",
-        "help": "Este template no tiene autocompletado automático. El campo Total se calcula solo a partir del % Natural y % Idéntico Natural.",
+        "help": "El nombre del producto se puede autocompletar cargando la Ficha Técnica (PDF) o el Dossier (xlsx). El resto de los campos se completa manualmente. El campo Total se calcula solo a partir del % Natural y % Idéntico Natural.",
         "fields": [
             {"id": "producto", "label": "Nombre del producto", "type": "text", "placeholder": "NOT Burger 113g"},
             {"id": "sab_natural", "label": "Saborizante Natural (%)", "type": "text", "placeholder": "0.5"},
