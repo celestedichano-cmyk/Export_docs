@@ -269,6 +269,7 @@ def fill_table_rows(table, data_rows, start_row=1):
     while len(table.rows) > start_row:
         tr = table.rows[-1]._tr
         tr.getparent().remove(tr)
+    WNS_local = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
     for row_data in data_rows:
         row = copy.deepcopy(table.rows[start_row - 1])
         cells = row.cells
@@ -279,8 +280,25 @@ def fill_table_rows(table, data_rows, start_row=1):
                         run.text = ''
                     if para.runs:
                         para.runs[0].text = str(val)
+                        para.runs[0].font.name = 'NotFont Display'
                     else:
-                        para.add_run(str(val))
+                        run = para.add_run(str(val))
+                        run.font.name = 'NotFont Display'
+        # Forzar shading blanco para anular el banding heredado del estilo
+        # de tabla (Table1/TableNormal), que de otro modo pinta filas de gris
+        # de forma alternada al clonar filas dinámicamente.
+        for cell in cells:
+            tcPr = cell._tc.find(f'{{{WNS_local}}}tcPr')
+            if tcPr is None:
+                tcPr = OxmlElement('w:tcPr')
+                cell._tc.insert(0, tcPr)
+            shd = tcPr.find(f'{{{WNS_local}}}shd')
+            if shd is None:
+                shd = OxmlElement('w:shd')
+                tcPr.append(shd)
+            shd.set(qn('w:val'), 'clear')
+            shd.set(qn('w:color'), 'auto')
+            shd.set(qn('w:fill'), 'ffffff')
         table._tbl.append(row._tr)
 
 def parse_rows(text, separator='|'):
@@ -557,11 +575,16 @@ def generate_doc(template_id, data):
             'Textura': data.get('textura',''),
         }
         if len(all_tbls) > 2:
-            for row in all_tbls[2].findall(f'{{{WNS}}}tr')[1:]:
+            for row in list(all_tbls[2].findall(f'{{{WNS}}}tr'))[1:]:
                 cells = row.findall(f'{{{WNS}}}tc')
                 if not cells: continue
                 key = ''.join(t.text for t in cells[0].findall(f'.//{{{WNS}}}t') if t.text).strip()
                 if key in sensorial and len(cells) > 2:
+                    if not sensorial[key].strip():
+                        # Sin valor (ej. Apariencia no presente en la FT) —
+                        # se elimina la fila en lugar de dejarla vacía.
+                        row.getparent().remove(row)
+                        continue
                     set_cell_value_xml(cells[2], sensorial[key], WNS)
         contam = {
             'Plomo (Pb)': data.get('pb',''),
