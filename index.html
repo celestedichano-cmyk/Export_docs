@@ -368,7 +368,7 @@ function renderForm(id) {
 
   // Show pptx diagram section only for certificado_proceso
   document.getElementById('pptx-section').style.display = (id === 'certificado_proceso') ? 'block' : 'none';
-  document.getElementById('dossier-label').style.display = (id === 'reporte_formula' || id === 'informe_aditivos') ? 'inline-flex' : 'none';
+  document.getElementById('dossier-label').style.display = 'inline-flex';
 
   const form = document.getElementById('doc-form');
   form.innerHTML = '';
