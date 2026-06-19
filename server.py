@@ -42,8 +42,6 @@ TEMPLATES = {
         "help": "Este template no tiene autocompletado automático. Completá los campos manualmente. Los campos de Estructura y Significado vienen prellenados con el formato estándar — editalos solo si tu caso es distinto.",
         "fields": [
             {"id": "producto", "label": "Nombre del producto", "type": "text", "placeholder": "NOT Burger 113g"},
-            {"id": "copacker_abrev", "label": "Abreviatura del copacker", "type": "text", "placeholder": "PB"},
-            {"id": "copacker_nombre", "label": "Nombre completo del copacker", "type": "text", "placeholder": "Pacific Blu"},
             {"id": "estructura_elaboracion", "label": "Estructura — Fecha de Elaboración", "type": "text", "placeholder": "DD/MM/AA", "prefill": True},
             {"id": "significado_elaboracion", "label": "Significado — Fecha de Elaboración", "type": "text", "placeholder": "D: día / M: mes / A: año", "prefill": True},
             {"id": "estructura_vencimiento", "label": "Estructura — Fecha de Vencimiento", "type": "text", "placeholder": "DD/MM/AA", "prefill": True},
@@ -342,8 +340,6 @@ def generate_doc(template_id, data):
     fecha = data.get('fecha', today_es())
 
     if template_id == 'certificado_codificacion':
-        abrev = data.get('copacker_abrev', 'xx')
-        nombre = data.get('copacker_nombre', 'xx')
         if doc.tables:
             t = doc.tables[0]
 
@@ -372,7 +368,6 @@ def generate_doc(template_id, data):
                     for p in paras:
                         for r in p.runs:
                             r.text = ''
-                    joined = '\n'.join(lines)
                     if first_p.runs:
                         first_p.runs[0].text = lines[0]
                         first_p.runs[0].font.name = 'NotFont Display'
@@ -396,26 +391,15 @@ def generate_doc(template_id, data):
             if sig_venc and sig_venc != 'D: día / M: mes / A: año':
                 set_row_text(t.rows[2], 2, sig_venc)
 
-            # Fila 3: Lote — si el usuario editó el texto base, se respeta tal
-            # cual; si no lo tocó, se aplica el flujo original (PB/Pacificblu)
-            est_lote = data.get('estructura_lote', '').strip()
-            sig_lote = data.get('significado_lote', '').strip()
+            # Fila 3: Lote — mismo comportamiento: si no se edita, queda el
+            # texto crudo del template tal cual (PB XXX (HH:MM) / Pacificblu)
             default_sig_lote = 'PB: Identificación copacker Pacificblu\nXXX: Día correlativo del año\n(HH:MM): Hora de envasado'
-
-            row = t.rows[3]
+            est_lote = data.get('estructura_lote', '').strip()
             if est_lote and est_lote != 'PB XXX (HH:MM)':
-                set_row_text(row, 1, est_lote)
-            else:
-                cell1 = row.cells[1]
-                for p in cell1.paragraphs:
-                    replace_in_paragraph(p, {'PB': abrev})
-
+                set_row_text(t.rows[3], 1, est_lote)
+            sig_lote = data.get('significado_lote', '').strip()
             if sig_lote and sig_lote != default_sig_lote:
-                set_row_text(row, 2, sig_lote)
-            else:
-                cell2 = row.cells[2]
-                for p in cell2.paragraphs:
-                    replace_in_paragraph(p, {'PB': abrev, 'Pacificblu': nombre})
+                set_row_text(t.rows[3], 2, sig_lote)
 
         for para in doc.paragraphs:
             replace_in_paragraph(para, {'XXX': producto, 'XX de XX del 2025': fecha})
