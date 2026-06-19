@@ -155,7 +155,7 @@ TEMPLATES = {
     "reporte_formula": {
         "label": "Reporte de Fórmula de Producto",
         "file": "Template_REPORTE_FO_RMULA.docx",
-        "help": "Cargá el Dossier (xlsx) para autocompletar el producto y la lista de ingredientes con su % en orden decreciente (hoja 'Fórmula', columna 'Fórmula desplegada').",
+        "help": "Cargá el Dossier (xlsx) para autocompletar el producto y la lista de ingredientes con su % en orden decreciente (hoja 'Fórmula', tabla de orden decreciente).",
         "fields": [
             {"id": "producto", "label": "Nombre del producto", "type": "text", "placeholder": "NOT Burger 113g"},
             {"id": "formula_rows", "label": "Ingredientes y cantidades (Ingrediente | % en 100g, uno por línea)", "type": "textarea", "placeholder": "Agua | 55.0\nProteína de soya texturizada | 20.0\nAceite de girasol | 10.0"},
@@ -685,7 +685,10 @@ def generate_doc(template_id, data):
                     cells = new_tr.findall(f'{{{WNS}}}tc')
                     for i, val in enumerate(row_data):
                         if i < len(cells):
-                            set_cell_value_xml(cells[i], str(val), WNS)
+                            val_str = str(val)
+                            if i == 1 and val_str.strip():
+                                val_str = val_str.strip() + ' %'
+                            set_cell_value_xml(cells[i], val_str, WNS)
                     tbl_el.insert(list(tbl_el).index(total_tr), new_tr)
 
     elif template_id == 'reporte_saborizantes':
