@@ -366,9 +366,20 @@ function renderForm(id) {
   form.innerHTML = '';
 
   // Group fields
-  const generalFields = t.fields.filter(f => f.id !== 'fecha' && f.type !== 'textarea');
+  const checkboxFields = t.fields.filter(f => f.type === 'checkbox');
+  const generalFields = t.fields.filter(f => f.id !== 'fecha' && f.type !== 'textarea' && f.type !== 'checkbox');
   const textareaFields = t.fields.filter(f => f.type === 'textarea');
   const fechaField = t.fields.find(f => f.id === 'fecha');
+
+  if (checkboxFields.length) {
+    const sec = document.createElement('div');
+    sec.innerHTML = '<div class="section-title">Secciones a incluir</div>';
+    const grid = document.createElement('div');
+    grid.className = 'field-grid';
+    checkboxFields.forEach(f => grid.appendChild(makeField(f)));
+    sec.appendChild(grid);
+    form.appendChild(sec);
+  }
 
   if (generalFields.length) {
     const sec = document.createElement('div');
@@ -406,6 +417,26 @@ function renderForm(id) {
 function makeField(f) {
   const div = document.createElement('div');
   div.className = 'field';
+
+  if (f.type === 'checkbox') {
+    div.style.flexDirection = 'row';
+    div.style.alignItems = 'center';
+    div.style.gap = '8px';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.id = `f_${f.id}`;
+    input.name = f.id;
+    input.checked = f.checked !== false;
+    input.style.width = 'auto';
+    const lbl = document.createElement('label');
+    lbl.htmlFor = `f_${f.id}`;
+    lbl.textContent = f.label;
+    lbl.style.cursor = 'pointer';
+    div.appendChild(input);
+    div.appendChild(lbl);
+    return div;
+  }
+
   const lbl = document.createElement('label');
   lbl.htmlFor = `f_${f.id}`;
   lbl.textContent = f.label;
@@ -444,7 +475,12 @@ function collectData() {
   const data = {};
   t.fields.forEach(f => {
     const el = document.getElementById(`f_${f.id}`);
-    if (el) data[f.id] = el.value.trim() || el.placeholder || '';
+    if (!el) return;
+    if (f.type === 'checkbox') {
+      data[f.id] = el.checked ? 'true' : 'false';
+    } else {
+      data[f.id] = el.value.trim() || el.placeholder || '';
+    }
   });
   if (currentTmpl === 'certificado_proceso') {
     const img = document.getElementById('diagrama-preview-img');
