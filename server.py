@@ -55,9 +55,12 @@ TEMPLATES = {
     "certificado_empaque": {
         "label": "Certificado de Empaque",
         "file": "Template_CERTIFICADO_DE_EMPAQUE.docx",
-        "help": "Cargá la Ficha Técnica (PDF) para autocompletar el nombre del producto y las características físicas de los envases primario y secundario. El nombre del producto también se autocompleta con el Dossier (xlsx).",
+        "help": "Cargá la Ficha Técnica (PDF) para autocompletar el nombre del producto y las características físicas de envase primario, secundario y caja master. El nombre del producto también se autocompleta con el Dossier (xlsx). Tildá qué secciones incluir en el documento final.",
         "fields": [
             {"id": "producto", "label": "Nombre del producto", "type": "text", "placeholder": "NOT Burger 113g"},
+            {"id": "incluir_primario", "label": "Incluir Envase Primario", "type": "checkbox", "checked": True},
+            {"id": "incluir_secundario", "label": "Incluir Envase Secundario", "type": "checkbox", "checked": True},
+            {"id": "incluir_caja_master", "label": "Incluir Caja Master", "type": "checkbox", "checked": False},
             {"id": "tipo_envase_primario", "label": "Tipo de envase primario", "type": "text", "placeholder": "Bolsa plástica"},
             {"id": "ancho_p", "label": "Primario – Ancho (cm)", "type": "number", "placeholder": ""},
             {"id": "largo_p", "label": "Primario – Largo (cm)", "type": "number", "placeholder": ""},
@@ -72,8 +75,15 @@ TEMPLATES = {
             {"id": "peso_neto_s", "label": "Secundario – Peso Neto (kg)", "type": "number", "placeholder": ""},
             {"id": "peso_bruto_s", "label": "Secundario – Peso Bruto (kg)", "type": "number", "placeholder": ""},
             {"id": "material_s", "label": "Secundario – Material", "type": "text", "placeholder": "Cartón corrugado"},
-            {"id": "cantidad_unidades", "label": "Secundario – Cantidad de unidades", "type": "number", "placeholder": ""},
-            {"id": "fecha", "label": "Fecha del documento", "type": "text", "placeholder": today_es()},
+            {"id": "cantidad_unidades_s", "label": "Secundario – Cantidad de unidades", "type": "number", "placeholder": ""},
+            {"id": "tipo_envase_caja_master", "label": "Tipo de envase Caja Master", "type": "text", "placeholder": "Cartón corrugado"},
+            {"id": "ancho_cm", "label": "Caja Master – Ancho (cm)", "type": "number", "placeholder": ""},
+            {"id": "largo_cm", "label": "Caja Master – Largo (cm)", "type": "number", "placeholder": ""},
+            {"id": "alto_cm", "label": "Caja Master – Alto (cm)", "type": "number", "placeholder": ""},
+            {"id": "peso_neto_cm", "label": "Caja Master – Peso Neto (kg)", "type": "number", "placeholder": ""},
+            {"id": "peso_bruto_cm", "label": "Caja Master – Peso Bruto (kg)", "type": "number", "placeholder": ""},
+            {"id": "material_cm", "label": "Caja Master – Material", "type": "text", "placeholder": "Cartón corrugado"},
+            {"id": "cantidad_unidades", "label": "Caja Master – Cantidad de unidades", "type": "number", "placeholder": ""},
         ] + FIRMANTE_FIELDS,
     },
 
@@ -427,7 +437,12 @@ def generate_doc(template_id, data):
                 run.add_picture(BytesIO(img_bytes), width=Inches(6))
 
     elif template_id == 'certificado_empaque':
-        # Replace tipo de envase BEFORE replace_all so 'XXX' isn't clobbered by producto
+        incluir_primario = data.get('incluir_primario', 'true') == 'true'
+        incluir_secundario = data.get('incluir_secundario', 'true') == 'true'
+        incluir_caja = data.get('incluir_caja_master', 'false') == 'true'
+
+        # Replace tipo de envase BEFORE replace_all so 'XXX' isn't clobbered by producto.
+        # Orden de aparición en el template: Primario, Secundario, Caja Master.
         found = 0
         for para in doc.paragraphs:
             if 'Tipo de envase:' in para.text:
@@ -436,10 +451,12 @@ def generate_doc(template_id, data):
                     replace_in_paragraph(para, {'Tipo de envase: XXX': f'Tipo de envase: {data.get("tipo_envase_primario","")}'})
                 elif found == 2:
                     replace_in_paragraph(para, {'Tipo de envase: XXX': f'Tipo de envase: {data.get("tipo_envase_secundario","")}'})
+                elif found == 3:
+                    replace_in_paragraph(para, {'Tipo de envase: XXX': f'Tipo de envase: {data.get("tipo_envase_caja_master","Cartón corrugado")}'})
         replace_all(doc, {'XXX': producto, 'XX de XX del 2025': fecha})
+
         tables = doc.tables
         if len(tables) >= 1:
-            t1 = tables[0]
             mapping_p = [
                 ('Ancho (cm)', data.get('ancho_p','')),
                 ('Largo (cm)', data.get('largo_p','')),
@@ -448,13 +465,12 @@ def generate_doc(template_id, data):
                 ('Peso Bruto (g)', data.get('peso_bruto_p','')),
                 ('Material', data.get('material_p','')),
             ]
-            for row in t1.rows[1:]:
+            for row in tables[0].rows[1:]:
                 label = row.cells[0].text.strip()
                 for lbl, val in mapping_p:
                     if lbl in label:
                         set_cell_value(row.cells[1], val)
         if len(tables) >= 2:
-            t2 = tables[1]
             mapping_s = [
                 ('Ancho (cm)', data.get('ancho_s','')),
                 ('Largo (cm)', data.get('largo_s','')),
@@ -462,13 +478,62 @@ def generate_doc(template_id, data):
                 ('Peso Neto (kg)', data.get('peso_neto_s','')),
                 ('Peso Bruto (kg)', data.get('peso_bruto_s','')),
                 ('Material', data.get('material_s','')),
-                ('Cantidad de unidades', data.get('cantidad_unidades','')),
+                ('Cantidad de unidades', data.get('cantidad_unidades_s','')),
             ]
-            for row in t2.rows[1:]:
+            for row in tables[1].rows[1:]:
                 label = row.cells[0].text.strip()
                 for lbl, val in mapping_s:
                     if lbl in label:
                         set_cell_value(row.cells[1], val)
+        if len(tables) >= 3:
+            mapping_cm = [
+                ('Ancho (cm)', data.get('ancho_cm','')),
+                ('Largo (cm)', data.get('largo_cm','')),
+                ('Alto (cm)', data.get('alto_cm','')),
+                ('Peso Neto (kg)', data.get('peso_neto_cm','')),
+                ('Peso Bruto (kg)', data.get('peso_bruto_cm','')),
+                ('Material', data.get('material_cm','')),
+                ('Cantidad de unidades', data.get('cantidad_unidades','')),
+            ]
+            for row in tables[2].rows[1:]:
+                label = row.cells[0].text.strip()
+                for lbl, val in mapping_cm:
+                    if lbl in label:
+                        set_cell_value(row.cells[1], val)
+
+        # Eliminar secciones no marcadas. Cada sección = 1 párrafo título +
+        # 1 párrafo "Tipo de envase" + 1 tabla, en orden Primario/Secundario/
+        # Caja Master. Se eliminan en orden inverso para no desordenar índices
+        # mientras se itera sobre el body.
+        secciones_incluir = [incluir_primario, incluir_secundario, incluir_caja]
+        WNS_local = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+        body = doc.element.body
+
+        def encontrar_secciones():
+            """Detecta cada bloque (título, tipo_envase_p, tabla) en orden de aparición."""
+            bloques = []
+            children = list(body)
+            i = 0
+            while i < len(children):
+                el = children[i]
+                if el.tag == f'{{{WNS_local}}}p':
+                    texto = ''.join(t.text or '' for t in el.findall(f'.//{{{WNS_local}}}t'))
+                    if texto.strip() in ('Envase Primario', 'Envase secundario', 'Caja Master'):
+                        titulo_el = el
+                        tipo_envase_el = children[i + 1] if i + 1 < len(children) else None
+                        tabla_el = children[i + 2] if i + 2 < len(children) else None
+                        bloques.append((titulo_el, tipo_envase_el, tabla_el))
+                        i += 3
+                        continue
+                i += 1
+            return bloques
+
+        bloques = encontrar_secciones()
+        for incluir, bloque in zip(secciones_incluir, bloques):
+            if not incluir:
+                for el in bloque:
+                    if el is not None and el.getparent() is not None:
+                        el.getparent().remove(el)
 
     elif template_id == 'informe_analisis':
         replace_all(doc, {'XXX': producto, 'XX de XX del 2025': fecha})
