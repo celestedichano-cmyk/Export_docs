@@ -109,7 +109,7 @@ TEMPLATES = {
             {"id": "incluir_contaminantes", "label": "Incluir Límites de Contaminantes", "type": "checkbox", "checked": True},
             {"id": "fq_rows", "label": "Análisis fisicoquímicos (Parámetro | Metodología | Resultado, una fila por línea)", "type": "textarea", "placeholder": "pH | AOAC 943.02 | 6.8\nHumedad | AOAC 925.10 | 62%"},
             {"id": "mb_rows", "label": "Análisis microbiológicos (Parámetro | Metodología | Resultado)", "type": "textarea", "placeholder": "Recuento aeróbico | ISO 4833 | <10 UFC/g"},
-            {"id": "apariencia", "label": "Sensorial – Apariencia", "type": "text", "placeholder": "Homogénea, sin defectos"},
+            {"id": "apariencia", "label": "Sensorial – Apariencia (dejar vacío si no aplica)", "type": "text", "placeholder": ""},
             {"id": "color", "label": "Sensorial – Color", "type": "text", "placeholder": "Marrón característico"},
             {"id": "aroma", "label": "Sensorial – Aroma", "type": "text", "placeholder": "Característico a carne"},
             {"id": "sabor", "label": "Sensorial – Sabor", "type": "text", "placeholder": "Umami, levemente salado"},
