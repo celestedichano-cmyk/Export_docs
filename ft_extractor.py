@@ -288,6 +288,7 @@ def _extract_pagina3(table):
 
     primario = {}
     secundario = {}
+    caja = {}
 
     for row in table:
         if not row or not row[0]:
@@ -298,6 +299,7 @@ def _extract_pagina3(table):
         if "ENVASE PRIMARIO" in cell0:
             in_primario = True
             in_secundario = False
+            in_caja = False
             # Extraer tipo entre paréntesis
             m = re.search(r'\(([^)]+)\)', cell0)
             result["tipo_envase_primario"] = m.group(1).title() if m else ""
@@ -306,6 +308,7 @@ def _extract_pagina3(table):
         if "ENVASE SECUNDARIO" in cell0:
             in_primario = False
             in_secundario = True
+            in_caja = False
             m = re.search(r'\(([^)]+)\)', cell0)
             result["tipo_envase_secundario"] = m.group(1).title() if m else ""
             continue
@@ -353,8 +356,34 @@ def _extract_pagina3(table):
                 secundario["material"] = val
 
         elif in_caja:
-            if "Cantidad" in cell0:
-                secundario["cantidad_unidades"] = val
+            if "Ancho" in cell0:
+                caja["ancho"] = val
+            elif "Largo" in cell0:
+                caja["largo"] = val
+            elif "Alto" in cell0:
+                caja["alto"] = val
+            elif "Peso neto" in cell0:
+                caja["peso_neto"] = val
+            elif "Peso bruto" in cell0:
+                caja["peso_bruto"] = val
+            elif "Material" in cell0:
+                # En la sección Caja Master a veces pdfplumber corta la celda
+                # de etiqueta justo en "envase C" + "ARTÓN..." en vez de
+                # "envase" + "CARTÓN...". Reconstruimos uniendo el resto de
+                # la etiqueta (después de "Material de envase") con el valor.
+                label_extra = cell0.split("envase", 1)[-1].strip()
+                material_val = (label_extra + val).strip() if label_extra else val
+                # El material de Caja Master casi siempre es Cartón Corrugado,
+                # pero pdfplumber suele truncar el número de código entre
+                # paréntesis de forma inconsistente según la FT. Normalizamos
+                # al código estándar conocido (20) cuando se detecta el patrón.
+                if "ARTÓN CORRUGADO" in material_val.upper() or "CARTÓN CORRUGADO" in material_val.upper():
+                    material_val = "CARTÓN CORRUGADO (20)"
+                elif material_val.count("(") > material_val.count(")"):
+                    material_val += ")"
+                caja["material"] = material_val
+            elif "Cantidad" in cell0:
+                caja["cantidad_unidades"] = val
 
     # Mapear a nombres de campos del template
     result["ancho_p"] = primario.get("ancho", "")
@@ -370,7 +399,14 @@ def _extract_pagina3(table):
     result["peso_neto_s"] = secundario.get("peso_neto", "")
     result["peso_bruto_s"] = secundario.get("peso_bruto", "")
     result["material_s"] = secundario.get("material", "")
-    result["cantidad_unidades"] = secundario.get("cantidad_unidades", "")
+
+    result["ancho_cm"] = caja.get("ancho", "")
+    result["largo_cm"] = caja.get("largo", "")
+    result["alto_cm"] = caja.get("alto", "")
+    result["peso_neto_cm"] = caja.get("peso_neto", "")
+    result["peso_bruto_cm"] = caja.get("peso_bruto", "")
+    result["material_cm"] = caja.get("material", "")
+    result["cantidad_unidades"] = caja.get("cantidad_unidades", "")
 
     return result
 
