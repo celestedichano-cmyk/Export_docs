@@ -10,24 +10,26 @@ Uso:
 
 from openpyxl import load_workbook
 import io
+import re
 import unicodedata
 
 
 def _fmt_pct(value):
     """
     Formatea una fracción decimal (ej 0.0303) como porcentaje legible.
-    Usa suficientes decimales para no perder valores muy chicos
-    (ej. vitaminas en trazas), recortando ceros finales innecesarios.
+    Usa suficientes decimales para conservar al menos 2 cifras significativas,
+    evitando perder valores muy chicos (ej. vitaminas en trazas).
     """
     if value is None:
         return ""
     pct = value * 100
     if pct == 0:
         return "0"
-    # Para valores muy chicos, usar notación con más decimales
-    decimales = 6
-    while round(pct, decimales) == 0 and decimales < 12:
-        decimales += 2
+    # Calcular decimales necesarios para mostrar al menos 2 cifras significativas
+    import math
+    magnitud = math.floor(math.log10(abs(pct)))
+    decimales = max(6, -magnitud + 1)
+    decimales = min(decimales, 15)
     s = f"{pct:.{decimales}f}".rstrip("0").rstrip(".")
     return s if s else "0"
 
@@ -80,17 +82,60 @@ def extract_dossier(xlsx_bytes):
     if "Fórmula" in wb.sheetnames:
         ws_formula = wb["Fórmula"]
 
-        # --- Fórmula (orden decreciente, columnas X/Y) → para Reporte Fórmula ---
+        # También cargamos el workbook con fórmulas (sin resolver) para
+        # poder seguir la cadena Y → V → D por número de fila, evitando
+        # depender de valores cacheados que pueden estar desactualizados.
+        wb_formulas = load_workbook(io.BytesIO(xlsx_bytes), data_only=False)
+        ws_formula_raw = wb_formulas["Fórmula"]
+
+        def _resolve_pct_from_formula(y_formula):
+            """
+            Dada la fórmula de una celda Y (ej '=V11' o '=V15+V16+V17'),
+            extrae los números de fila V referenciados y suma los valores
+            reales de la columna D en esas mismas filas (D{n} = V{n} siempre).
+            Devuelve None si la celda no es una fórmula de columna V.
+            """
+            if not isinstance(y_formula, str) or not y_formula.startswith("="):
+                return None
+            filas_v = re.findall(r"V(\d+)", y_formula)
+            if not filas_v:
+                return None
+            total = 0.0
+            for fila_str in filas_v:
+                fila_n = int(fila_str)
+                d_val = ws_formula.cell(row=fila_n, column=4).value
+                if isinstance(d_val, (int, float)):
+                    total += d_val
+            return total
+
+        # --- Mapa nombre normalizado → % (desde columna D, fuente real sin caché) ---
+        # Se usa como respaldo cuando el nombre de X coincide con A.
+        pct_por_ingrediente = {}
+        r = 4
+        while True:
+            ing_a = ws_formula.cell(row=r, column=1).value
+            if ing_a is None:
+                break
+            pct_d = ws_formula.cell(row=r, column=4).value
+            if isinstance(pct_d, (int, float)):
+                pct_por_ingrediente[_normalize(ing_a)] = pct_d
+            r += 1
+
+        # --- Orden decreciente (columna X) con % resuelto vía cadena de fórmulas ---
         formula_rows = []
         ingredientes_orden = []
         r = 5
         while True:
             ing = ws_formula.cell(row=r, column=24).value
-            pct = ws_formula.cell(row=r, column=25).value
             if ing is None:
                 break
             ing_clean = str(ing).strip()
-            pct_str = _fmt_pct(pct) if isinstance(pct, (int, float)) else ""
+            y_formula = ws_formula_raw.cell(row=r, column=25).value
+            pct_val = _resolve_pct_from_formula(y_formula)
+            if pct_val is None:
+                # Fallback: cruce por nombre contra columna A/D
+                pct_val = pct_por_ingrediente.get(_normalize(ing_clean))
+            pct_str = _fmt_pct(pct_val) if isinstance(pct_val, (int, float)) else ""
             formula_rows.append(f"{ing_clean} | {pct_str}")
             ingredientes_orden.append(ing_clean)
             r += 1
