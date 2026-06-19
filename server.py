@@ -51,7 +51,7 @@ TEMPLATES = {
     "certificado_empaque": {
         "label": "Certificado de Empaque",
         "file": "Template_CERTIFICADO_DE_EMPAQUE.docx",
-        "help": "Cargá la Ficha Técnica (PDF) para autocompletar el nombre del producto y las características de los envases primario y secundario (Sección 8.2).",
+        "help": "Cargá la Ficha Técnica (PDF) para autocompletar el nombre del producto y las características físicas de los envases primario y secundario.",
         "fields": [
             {"id": "producto", "label": "Nombre del producto", "type": "text", "placeholder": "NOT Burger 113g"},
             {"id": "tipo_envase_primario", "label": "Tipo de envase primario", "type": "text", "placeholder": "Bolsa plástica"},
@@ -86,7 +86,7 @@ TEMPLATES = {
     "informe_analisis": {
         "label": "Informe de Análisis",
         "file": "Template_INFORME_ANA_LISIS.docx",
-        "help": "Cargá la Ficha Técnica (PDF) para autocompletar los parámetros sensoriales (Sección 7.1), fisicoquímicos (7.2) y microbiológicos (7.3).",
+        "help": "Cargá la Ficha Técnica (PDF) para autocompletar los parámetros sensoriales, fisicoquímicos y microbiológicos.",
         "fields": [
             {"id": "producto", "label": "Nombre del producto", "type": "text", "placeholder": "NOT Burger 113g"},
             {"id": "fq_rows", "label": "Análisis fisicoquímicos (Parámetro | Metodología | Resultado, una fila por línea)", "type": "textarea", "placeholder": "pH | AOAC 943.02 | 6.8\nHumedad | AOAC 925.10 | 62%"},
@@ -108,7 +108,7 @@ TEMPLATES = {
     "informe_nutricional": {
         "label": "Informe de Análisis Nutricional",
         "file": "Template_INFORME_ANA_LISIS_NUTRICIONAL.docx",
-        "help": "Cargá la Ficha Técnica (PDF) para autocompletar la tabla de información nutricional (Sección 3, columna 100g).",
+        "help": "Cargá la Ficha Técnica (PDF) para autocompletar la tabla de información nutricional (columna 100g).",
         "fields": [
             {"id": "producto", "label": "Nombre del producto", "type": "text", "placeholder": "NOT Burger 113g"},
             {"id": "energia", "label": "Energía (kcal)", "type": "number", "placeholder": ""},
@@ -144,7 +144,7 @@ TEMPLATES = {
     "reporte_fibra": {
         "label": "Reporte de Fibra Dietética Total",
         "file": "Template_REPORTE_FIBRA_DIETE_TICA_TOTAL.docx",
-        "help": "Cargá la Ficha Técnica (PDF) para autocompletar la Fibra Dietética Total (Sección 3, columna 100g).",
+        "help": "Cargá la Ficha Técnica (PDF) para autocompletar la Fibra Dietética Total (columna 100g de la tabla de información nutricional).",
         "fields": [
             {"id": "producto", "label": "Nombre del producto", "type": "text", "placeholder": "NOT Burger 113g"},
             {"id": "fibra_total", "label": "Fibra Dietética Total (g/100g)", "type": "number", "placeholder": ""},
