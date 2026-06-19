@@ -429,10 +429,16 @@ function makeField(f) {
   }
   input.id = `f_${f.id}`;
   input.name = f.id;
-  if (f.placeholder) input.placeholder = f.placeholder;
+  if (f.prefill && f.placeholder) {
+    // Prefill: the default text is pre-typed as an editable value,
+    // not shown as gray placeholder. The user edits it directly in place.
+    input.value = f.placeholder;
+  } else if (f.placeholder) {
+    input.placeholder = f.placeholder;
+  }
   div.appendChild(input);
 
-  if (f.type === 'textarea') {
+  if (f.type === 'textarea' && !f.prefill) {
     const hint = document.createElement('div');
     hint.className = 'hint';
     hint.textContent = 'Separar columnas con | — una fila por línea';
