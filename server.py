@@ -498,7 +498,6 @@ def generate_doc(template_id, data):
                                     t_el.text = ''
                             t_el = runs[0].find(f'{{{WNS}}}t')
                             if t_el is None:
-                                from docx.oxml import OxmlElement
                                 t_el = OxmlElement('w:t')
                                 runs[0].append(t_el)
                             t_el.text = val
