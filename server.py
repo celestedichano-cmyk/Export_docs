@@ -126,7 +126,7 @@ TEMPLATES = {
     "informe_nutricional": {
         "label": "Informe de Análisis Nutricional",
         "file": "Template_INFORME_ANA_LISIS_NUTRICIONAL.docx",
-        "help": "Cargá la Ficha Técnica (PDF) para autocompletar el nombre del producto y la tabla de información nutricional (columna 100g). El nombre del producto también se autocompleta con el Dossier (xlsx).",
+        "help": "Cargá la Ficha Técnica (PDF) o el Dossier (xlsx) para autocompletar el nombre del producto y la tabla de información nutricional (columna 100g/100ml). En el Dossier, estos datos se toman de la hoja 'Proyecto de rótulo', sección Información Nutricional, columna 100 ml.",
         "fields": [
             {"id": "producto", "label": "Nombre del producto", "type": "text", "placeholder": "NOT Burger 113g"},
             {"id": "energia", "label": "Energía (kcal)", "type": "number", "placeholder": ""},
