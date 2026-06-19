@@ -672,14 +672,18 @@ def generate_doc(template_id, data):
             formula_tbls = doc.element.body.findall(f'.//{{{WNS}}}tbl')
             if formula_tbls:
                 tbl_el = formula_tbls[0]
-                rows_el = tbl_el.findall(f'{{{WNS}}}tr')
                 data_rows = parse_rows(data['formula_rows'])
-                # Keep first row as template, remove data rows except last (total)
+                # Use the second row (index 1) as the clone template — it's a
+                # blank data row without the header's gray shading. Save a
+                # deep copy of it BEFORE removing rows, since it gets deleted
+                # in the trim loop below.
+                all_tr_initial = tbl_el.findall(f'{{{WNS}}}tr')
+                template_tr = copy.deepcopy(all_tr_initial[1]) if len(all_tr_initial) > 1 else copy.deepcopy(all_tr_initial[0])
+                # Keep first row (header) and last row (TOTAL); remove the rest
                 while len(tbl_el.findall(f'{{{WNS}}}tr')) > 2:
                     all_tr = tbl_el.findall(f'{{{WNS}}}tr')
                     tbl_el.remove(all_tr[-2])
                 total_tr = tbl_el.findall(f'{{{WNS}}}tr')[-1]
-                template_tr = tbl_el.findall(f'{{{WNS}}}tr')[0]
                 for row_data in data_rows:
                     new_tr = copy.deepcopy(template_tr)
                     cells = new_tr.findall(f'{{{WNS}}}tc')
