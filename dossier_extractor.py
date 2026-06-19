@@ -32,6 +32,17 @@ def _fmt_pct(value):
     return s if s else "0"
 
 
+def _fmt_ins(value):
+    """Formatea el número INS: quita '.0' final si es un float entero, deja texto tal cual."""
+    if value is None or str(value).strip() == "":
+        return ""
+    if isinstance(value, float):
+        if value == int(value):
+            return str(int(value))
+        return str(value)
+    return str(value).strip()
+
+
 def _normalize(text):
     """Normaliza texto para comparación: sin tildes, minúsculas, sin espacios extra."""
     if not text:
@@ -85,16 +96,21 @@ def extract_dossier(xlsx_bytes):
             r += 1
         result["formula_rows"] = "\n".join(formula_rows)
 
-        # --- Mapa nombre normalizado → función (desde tabla A/E) ---
+        # --- Mapa nombre normalizado → función y → INS (desde tabla A/E/F) ---
         funcion_por_ingrediente = {}
+        ins_por_ingrediente = {}
         r = 4
         while True:
             ing = ws_formula.cell(row=r, column=1).value
             if ing is None:
                 break
             funcion = ws_formula.cell(row=r, column=5).value
+            ins = ws_formula.cell(row=r, column=6).value
             if funcion:
                 funcion_por_ingrediente[_normalize(ing)] = str(funcion).strip()
+            ins_fmt = _fmt_ins(ins)
+            if ins_fmt:
+                ins_por_ingrediente[_normalize(ing)] = ins_fmt
             r += 1
         # "Saborizantes naturales" ya viene agrupado en columna X; si no está
         # mapeado individualmente en A/E (porque ahí está desglosado en aromas),
@@ -107,7 +123,9 @@ def extract_dossier(xlsx_bytes):
         for idx, nombre in enumerate(ingredientes_orden, start=1):
             funcion = funcion_por_ingrediente.get(_normalize(nombre), "")
             if funcion:
-                aditivos_list.append(f"{nombre.upper()} | {funcion}")
+                ins = ins_por_ingrediente.get(_normalize(nombre), "")
+                nombre_fmt = f"{nombre.upper()} (INS {ins})" if ins else nombre.upper()
+                aditivos_list.append(f"{nombre_fmt} | {funcion}")
                 aditivos_filas.append(str(idx))
 
         result["ingredientes"] = "\n".join(ingredientes_orden)
