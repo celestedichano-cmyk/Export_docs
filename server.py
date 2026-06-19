@@ -100,9 +100,13 @@ TEMPLATES = {
     "informe_analisis": {
         "label": "Informe de Análisis",
         "file": "Template_INFORME_ANA_LISIS.docx",
-        "help": "Cargá la Ficha Técnica (PDF) para autocompletar el nombre del producto y los parámetros sensoriales, fisicoquímicos y microbiológicos. El nombre del producto también se autocompleta con el Dossier (xlsx).",
+        "help": "Cargá la Ficha Técnica (PDF) para autocompletar el nombre del producto y los parámetros sensoriales, fisicoquímicos y microbiológicos. El nombre del producto también se autocompleta con el Dossier (xlsx). Tildá qué tablas incluir en el documento final.",
         "fields": [
             {"id": "producto", "label": "Nombre del producto", "type": "text", "placeholder": "NOT Burger 113g"},
+            {"id": "incluir_fq", "label": "Incluir Análisis Fisicoquímicos", "type": "checkbox", "checked": True},
+            {"id": "incluir_mb", "label": "Incluir Análisis Microbiológicos", "type": "checkbox", "checked": True},
+            {"id": "incluir_sensorial", "label": "Incluir Análisis Sensoriales", "type": "checkbox", "checked": True},
+            {"id": "incluir_contaminantes", "label": "Incluir Límites de Contaminantes", "type": "checkbox", "checked": True},
             {"id": "fq_rows", "label": "Análisis fisicoquímicos (Parámetro | Metodología | Resultado, una fila por línea)", "type": "textarea", "placeholder": "pH | AOAC 943.02 | 6.8\nHumedad | AOAC 925.10 | 62%"},
             {"id": "mb_rows", "label": "Análisis microbiológicos (Parámetro | Metodología | Resultado)", "type": "textarea", "placeholder": "Recuento aeróbico | ISO 4833 | <10 UFC/g"},
             {"id": "apariencia", "label": "Sensorial – Apariencia", "type": "text", "placeholder": "Homogénea, sin defectos"},
@@ -574,6 +578,50 @@ def generate_doc(template_id, data):
                 for k, v in contam.items():
                     if k in key and len(cells) > 2:
                         set_cell_value_xml(cells[2], str(v), WNS)
+
+        # Eliminar secciones no marcadas. Cada sección = 1 párrafo título +
+        # 1 bloque de tabla (tbl directo, o sdt que contiene una tbl), en
+        # orden: Fisicoquímicos, Microbiológicos, Sensoriales, Contaminantes.
+        incluir_fq = data.get('incluir_fq', 'true') == 'true'
+        incluir_mb = data.get('incluir_mb', 'true') == 'true'
+        incluir_sens = data.get('incluir_sensorial', 'true') == 'true'
+        incluir_contam = data.get('incluir_contaminantes', 'true') == 'true'
+        secciones_incluir = [incluir_fq, incluir_mb, incluir_sens, incluir_contam]
+
+        titulos_seccion = (
+            'Análisis fisicoquímicos realizados',
+            'Análisis microbiológicos realizados',
+            'Análisis sensoriales realizados',
+            'Límites de contaminantes',
+        )
+
+        def encontrar_bloques_analisis():
+            """Detecta cada bloque (párrafo título, elemento de tabla) en orden.
+            El elemento de tabla puede ser un <w:tbl> directo o un <w:sdt> que
+            contiene una tabla adentro (sdtContent)."""
+            bloques = []
+            children = list(body)
+            i = 0
+            while i < len(children):
+                el = children[i]
+                if el.tag == f'{{{WNS}}}p':
+                    texto = ''.join(t.text or '' for t in el.findall(f'.//{{{WNS}}}t'))
+                    if any(texto.strip().startswith(tit) for tit in titulos_seccion):
+                        titulo_el = el
+                        tabla_el = children[i + 1] if i + 1 < len(children) else None
+                        bloques.append((titulo_el, tabla_el))
+                        i += 2
+                        continue
+                i += 1
+            return bloques
+
+        body = doc.element.body
+        bloques_analisis = encontrar_bloques_analisis()
+        for incluir, bloque in zip(secciones_incluir, bloques_analisis):
+            if not incluir:
+                for el in bloque:
+                    if el is not None and el.getparent() is not None:
+                        el.getparent().remove(el)
 
     elif template_id == 'informe_nutricional':
         replace_all(doc, {'XXX': producto, 'XX de XX del 2025': fecha})
