@@ -247,15 +247,7 @@
 
       <div class="import-bar">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M8 13h2v5H8zm4-3h2v8h-2zm4 2h2v6h-2z"/></svg>
-        <p><strong>Importar datos:</strong> Cargá un .xlsx, .docx o la Ficha Técnica en PDF para autocompletar el formulario.</p>
-        <label class="btn btn-secondary" style="cursor:pointer; font-size:13px; padding:7px 14px;">
-          Cargar .xlsx
-          <input type="file" id="xlsx-input" accept=".xlsx,.xls,.csv">
-        </label>
-        <label class="btn btn-secondary" style="cursor:pointer; font-size:13px; padding:7px 14px;">
-          Cargar .docx
-          <input type="file" id="docx-input" accept=".docx">
-        </label>
+        <p><strong>Importar datos:</strong> Cargá la Ficha Técnica (PDF) o el Dossier (xlsx) para autocompletar el formulario.</p>
         <label class="btn btn-secondary" style="cursor:pointer; font-size:13px; padding:7px 14px;">
           📄 Cargar FT (PDF)
           <input type="file" id="ft-input" accept=".pdf">
@@ -500,59 +492,6 @@ document.getElementById('generate-btn').addEventListener('click', async () => {
 
 document.getElementById('clear-btn').addEventListener('click', () => {
   document.querySelectorAll('#doc-form input, #doc-form textarea').forEach(el => el.value = '');
-});
-
-// Excel import
-document.getElementById('xlsx-input').addEventListener('change', async e => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = async (ev) => {
-    try {
-      const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm');
-      const wb = XLSX.read(ev.target.result, { type: 'array' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
-      rows.forEach(row => {
-        if (row.length >= 2) {
-          const campo = String(row[0]).trim();
-          const valor = String(row[1]).trim();
-          const el = document.getElementById(`f_${campo}`);
-          if (el) el.value = valor;
-        }
-      });
-      showToast('Datos importados desde Excel', 'success');
-    } catch(err) {
-      showToast('Error leyendo Excel: ' + err.message, 'error');
-    }
-  };
-  reader.readAsArrayBuffer(file);
-});
-
-// Word (.docx) import
-document.getElementById('docx-input').addEventListener('change', async e => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const formData = new FormData();
-  formData.append('file', file);
-  try {
-    const res = await fetch('/api/import-docx', { method: 'POST', body: formData });
-    if (!res.ok) throw new Error('Error leyendo el archivo');
-    const campos = await res.json();
-    let encontrados = 0;
-    Object.entries(campos).forEach(([campo, valor]) => {
-      const el = document.getElementById('f_' + campo);
-      if (el) { el.value = valor; encontrados++; }
-    });
-    if (encontrados > 0) {
-      showToast('Datos importados desde Word (' + encontrados + ' campos)', 'success');
-    } else {
-      showToast('No se encontraron campos reconocibles en el documento', 'error');
-    }
-  } catch(err) {
-    showToast('Error leyendo Word: ' + err.message, 'error');
-  }
-  e.target.value = '';
 });
 
 // Aditivos: auto-completar nombres en campo aditivos cuando cambia filas o ingredientes
