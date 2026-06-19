@@ -39,11 +39,17 @@ TEMPLATES = {
     "certificado_codificacion": {
         "label": "Certificado de Codificación de Fecha y Lote",
         "file": "Template_CERTIFICADO_DE_CODIFICACIO_N_DE_FECHA_Y_LOTE.docx",
-        "help": "Este template no tiene autocompletado automático. Completá los campos manualmente.",
+        "help": "Este template no tiene autocompletado automático. Completá los campos manualmente. Los campos de Estructura y Significado vienen prellenados con el formato estándar — editalos solo si tu caso es distinto.",
         "fields": [
             {"id": "producto", "label": "Nombre del producto", "type": "text", "placeholder": "NOT Burger 113g"},
             {"id": "copacker_abrev", "label": "Abreviatura del copacker", "type": "text", "placeholder": "PB"},
             {"id": "copacker_nombre", "label": "Nombre completo del copacker", "type": "text", "placeholder": "Pacific Blu"},
+            {"id": "estructura_elaboracion", "label": "Estructura — Fecha de Elaboración", "type": "text", "placeholder": "DD/MM/AA", "prefill": True},
+            {"id": "significado_elaboracion", "label": "Significado — Fecha de Elaboración", "type": "text", "placeholder": "D: día / M: mes / A: año", "prefill": True},
+            {"id": "estructura_vencimiento", "label": "Estructura — Fecha de Vencimiento", "type": "text", "placeholder": "DD/MM/AA", "prefill": True},
+            {"id": "significado_vencimiento", "label": "Significado — Fecha de Vencimiento", "type": "text", "placeholder": "D: día / M: mes / A: año", "prefill": True},
+            {"id": "estructura_lote", "label": "Estructura — Lote", "type": "text", "placeholder": "PB XXX (HH:MM)", "prefill": True},
+            {"id": "significado_lote", "label": "Significado — Lote", "type": "textarea", "placeholder": "PB: Identificación copacker Pacificblu\nXXX: Día correlativo del año\n(HH:MM): Hora de envasado", "prefill": True},
             {"id": "fecha", "label": "Fecha del documento", "type": "text", "placeholder": today_es()},
         ] + FIRMANTE_FIELDS,
     },
@@ -340,13 +346,77 @@ def generate_doc(template_id, data):
         nombre = data.get('copacker_nombre', 'xx')
         if doc.tables:
             t = doc.tables[0]
+
+            def set_row_text(row, col_idx, text):
+                cell = row.cells[col_idx]
+                lines = text.split('\n')
+                paras = cell.paragraphs
+                # Si hay más líneas que párrafos disponibles, usamos el último
+                # párrafo para las líneas sobrantes (separadas por salto de línea
+                # dentro del mismo run, ya que python-docx no crea párrafos nuevos
+                # automáticamente en una celda existente sin más estructura).
+                if len(lines) <= len(paras):
+                    for i, p in enumerate(paras):
+                        for r in p.runs:
+                            r.text = ''
+                        val = lines[i] if i < len(lines) else ''
+                        if p.runs:
+                            p.runs[0].text = val
+                            p.runs[0].font.name = 'NotFont Display'
+                        elif val:
+                            run = p.add_run(val)
+                            run.font.name = 'NotFont Display'
+                else:
+                    # Más líneas que párrafos: juntamos todo en el primer párrafo
+                    first_p = paras[0]
+                    for p in paras:
+                        for r in p.runs:
+                            r.text = ''
+                    joined = '\n'.join(lines)
+                    if first_p.runs:
+                        first_p.runs[0].text = lines[0]
+                        first_p.runs[0].font.name = 'NotFont Display'
+                    for extra_line in lines[1:]:
+                        run = first_p.add_run('\n' + extra_line)
+                        run.font.name = 'NotFont Display'
+
+            # Fila 1: Fecha de Elaboración (Estructura=col1, Significado=col2)
+            est_elab = data.get('estructura_elaboracion', '').strip()
+            if est_elab and est_elab != 'DD/MM/AA':
+                set_row_text(t.rows[1], 1, est_elab)
+            sig_elab = data.get('significado_elaboracion', '').strip()
+            if sig_elab and sig_elab != 'D: día / M: mes / A: año':
+                set_row_text(t.rows[1], 2, sig_elab)
+
+            # Fila 2: Fecha de Vencimiento
+            est_venc = data.get('estructura_vencimiento', '').strip()
+            if est_venc and est_venc != 'DD/MM/AA':
+                set_row_text(t.rows[2], 1, est_venc)
+            sig_venc = data.get('significado_vencimiento', '').strip()
+            if sig_venc and sig_venc != 'D: día / M: mes / A: año':
+                set_row_text(t.rows[2], 2, sig_venc)
+
+            # Fila 3: Lote — si el usuario editó el texto base, se respeta tal
+            # cual; si no lo tocó, se aplica el flujo original (PB/Pacificblu)
+            est_lote = data.get('estructura_lote', '').strip()
+            sig_lote = data.get('significado_lote', '').strip()
+            default_sig_lote = 'PB: Identificación copacker Pacificblu\nXXX: Día correlativo del año\n(HH:MM): Hora de envasado'
+
             row = t.rows[3]
-            cell1 = row.cells[1]
-            for p in cell1.paragraphs:
-                replace_in_paragraph(p, {'PB': abrev})
-            cell2 = row.cells[2]
-            for p in cell2.paragraphs:
-                replace_in_paragraph(p, {'PB': abrev, 'Pacificblu': nombre})
+            if est_lote and est_lote != 'PB XXX (HH:MM)':
+                set_row_text(row, 1, est_lote)
+            else:
+                cell1 = row.cells[1]
+                for p in cell1.paragraphs:
+                    replace_in_paragraph(p, {'PB': abrev})
+
+            if sig_lote and sig_lote != default_sig_lote:
+                set_row_text(row, 2, sig_lote)
+            else:
+                cell2 = row.cells[2]
+                for p in cell2.paragraphs:
+                    replace_in_paragraph(p, {'PB': abrev, 'Pacificblu': nombre})
+
         for para in doc.paragraphs:
             replace_in_paragraph(para, {'XXX': producto, 'XX de XX del 2025': fecha})
 
