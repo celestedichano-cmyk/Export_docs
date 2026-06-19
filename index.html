@@ -77,6 +77,26 @@
   .form-header h1 { font-size: 22px; font-weight: 700; }
   .form-header p { font-size: 14px; color: var(--muted); margin-top: 4px; }
 
+  .help-tooltip { position: relative; display: inline-block; margin-left: 4px; }
+  .help-asterisk {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--accent2-light); color: var(--accent2);
+    font-size: 12px; font-weight: 700; cursor: help;
+    vertical-align: middle;
+  }
+  .help-tooltip-text {
+    display: none;
+    position: absolute; bottom: 130%; left: 0;
+    width: 320px; max-width: 80vw;
+    background: var(--accent); color: #fff;
+    font-size: 12.5px; font-weight: 400; line-height: 1.5;
+    padding: 10px 12px; border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.2);
+    z-index: 50;
+  }
+  .help-tooltip:hover .help-tooltip-text { display: block; }
+
   .section-title {
     font-size: 11px; font-weight: 600; text-transform: uppercase;
     letter-spacing: 1px; color: var(--muted); margin: 24px 0 12px;
@@ -216,7 +236,13 @@
     <div id="form-area" style="display:none">
       <div class="form-header">
         <h1 id="form-title"></h1>
-        <p id="form-subtitle">Completá los campos y descargá el documento generado.</p>
+        <p id="form-subtitle">
+          Completá los campos y descargá el documento generado.
+          <span class="help-tooltip" id="help-tooltip" style="display:none">
+            <span class="help-asterisk">*</span>
+            <span class="help-tooltip-text" id="help-tooltip-text"></span>
+          </span>
+        </p>
       </div>
 
       <div class="import-bar">
@@ -330,9 +356,19 @@ function renderForm(id) {
 
   document.getElementById('form-title').textContent = t.label;
 
+  // Help tooltip with autocomplete info
+  const helpTooltip = document.getElementById('help-tooltip');
+  const helpText = document.getElementById('help-tooltip-text');
+  if (t.help) {
+    helpText.textContent = t.help;
+    helpTooltip.style.display = 'inline-block';
+  } else {
+    helpTooltip.style.display = 'none';
+  }
+
   // Show pptx diagram section only for certificado_proceso
   document.getElementById('pptx-section').style.display = (id === 'certificado_proceso') ? 'block' : 'none';
-  document.getElementById('dossier-label').style.display = (id === 'reporte_formula') ? 'inline-flex' : 'none';
+  document.getElementById('dossier-label').style.display = (id === 'reporte_formula' || id === 'informe_aditivos') ? 'inline-flex' : 'none';
 
   const form = document.getElementById('doc-form');
   form.innerHTML = '';
