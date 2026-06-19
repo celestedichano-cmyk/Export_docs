@@ -597,23 +597,56 @@ def generate_doc(template_id, data):
         if data.get('aditivos'):
             pairs = parse_rows(data['aditivos'])
             aditivo_paras = [p for p in doc.paragraphs if 'ADITIVO' in p.text]
+
+            def fill_aditivo_para(para, nombre, funcion):
+                if len(para.runs) >= 2:
+                    para.runs[0].text = nombre
+                    para.runs[0].bold = True
+                    para.runs[1].text = '\n' + funcion
+                    para.runs[1].bold = False
+                else:
+                    replace_in_paragraph(para, {'ADITIVO': nombre, 'Función tecnológica': funcion})
+                # Fix justification: "both" causes character spacing on short text
+                pPr = para._p.find(qn('w:pPr'))
+                if pPr is not None:
+                    jc = pPr.find(qn('w:jc'))
+                    if jc is not None:
+                        jc.set(qn('w:val'), 'left')
+
+            # Fill existing fixed placeholders first
             for i, para in enumerate(aditivo_paras):
                 if i < len(pairs):
                     nombre = pairs[i][0].upper() if len(pairs[i]) > 0 else ''
                     funcion = pairs[i][1] if len(pairs[i]) > 1 else ''
-                    if len(para.runs) >= 2:
-                        para.runs[0].text = nombre
-                        para.runs[0].bold = True
-                        para.runs[1].text = '\n' + funcion
-                        para.runs[1].bold = False
-                    else:
-                        replace_in_paragraph(para, {'ADITIVO': nombre, 'Función tecnológica': funcion})
-                    # Fix justification: "both" causes character spacing on short text
-                    pPr = para._p.find(qn('w:pPr'))
-                    if pPr is not None:
-                        jc = pPr.find(qn('w:jc'))
-                        if jc is not None:
-                            jc.set(qn('w:val'), 'left')
+                    fill_aditivo_para(para, nombre, funcion)
+
+            # If there are more aditivos than placeholders, clone the last
+            # placeholder paragraph (with its spacer) for each extra item
+            if len(pairs) > len(aditivo_paras) and aditivo_paras:
+                last_para = aditivo_paras[-1]
+                # Spacer paragraph right after the last ADITIVO block (if blank)
+                insert_after_el = last_para._p
+                next_p = last_para._p.getnext()
+                if next_p is not None and next_p.tag == qn('w:p'):
+                    # Treat the immediate following paragraph as a spacer to clone too
+                    spacer_el = next_p
+                else:
+                    spacer_el = None
+
+                for j in range(len(aditivo_paras), len(pairs)):
+                    nombre = pairs[j][0].upper() if len(pairs[j]) > 0 else ''
+                    funcion = pairs[j][1] if len(pairs[j]) > 1 else ''
+                    new_p_el = copy.deepcopy(last_para._p)
+                    insert_after_el.addnext(new_p_el)
+                    insert_after_el = new_p_el
+                    if spacer_el is not None:
+                        new_spacer_el = copy.deepcopy(spacer_el)
+                        insert_after_el.addnext(new_spacer_el)
+                        insert_after_el = new_spacer_el
+                    # Wrap the new XML element back into a Paragraph to fill it
+                    from docx.text.paragraph import Paragraph
+                    new_para = Paragraph(new_p_el, last_para._parent)
+                    fill_aditivo_para(new_para, nombre, funcion)
 
     elif template_id == 'reporte_fibra':
         replace_all(doc, {
