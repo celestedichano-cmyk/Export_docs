@@ -708,16 +708,18 @@ def generate_doc(template_id, data):
 
             # Micronutrientes adicionales: se insertan como filas nuevas al
             # final de la tabla, clonando el formato de la última fila fija
-            # (Sodio) para mantener tipografía y bordes consistentes.
+            # (Sodio) para mantener tipografía y bordes consistentes. Como
+            # esa fila tiene el borde inferior negro (cierre visual de la
+            # tabla), hay que dejarlo solo en la fila realmente última y
+            # poner blanco en las intermedias para no duplicar líneas negras.
             micro_raw = data.get('micronutrientes_extra', '').strip()
             if micro_raw:
                 filas_actuales = nut_tbl.findall(f'{{{WNS}}}tr')
                 if filas_actuales:
                     fila_modelo = filas_actuales[-1]
-                    for linea in micro_raw.split('\n'):
-                        linea = linea.strip()
-                        if not linea or '|' not in linea:
-                            continue
+                    lineas_validas = [l.strip() for l in micro_raw.split('\n') if l.strip() and '|' in l]
+                    nuevas_filas = []
+                    for linea in lineas_validas:
                         nombre, valor = [p.strip() for p in linea.split('|', 1)]
                         nueva_fila = copy.deepcopy(fila_modelo)
                         celdas_nuevas = nueva_fila.findall(f'{{{WNS}}}tc')
@@ -725,6 +727,20 @@ def generate_doc(template_id, data):
                             set_cell_value_xml(celdas_nuevas[0], nombre, WNS)
                             set_cell_value_xml(celdas_nuevas[1], valor, WNS)
                         nut_tbl.append(nueva_fila)
+                        nuevas_filas.append(nueva_fila)
+                    # Poner borde inferior blanco en todas menos la última
+                    # fila nueva (que conserva el negro de la plantilla).
+                    for fila in nuevas_filas[:-1]:
+                        for celda in fila.findall(f'{{{WNS}}}tc'):
+                            tcPr = celda.find(f'{{{WNS}}}tcPr')
+                            if tcPr is None:
+                                continue
+                            borders = tcPr.find(f'{{{WNS}}}tcBorders')
+                            if borders is None:
+                                continue
+                            bottom = borders.find(f'{{{WNS}}}bottom')
+                            if bottom is not None:
+                                bottom.set(qn('w:color'), 'ffffff')
 
     elif template_id == 'informe_aditivos':
         replace_all(doc, {'XX de XX del 2025': fecha})
