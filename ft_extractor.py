@@ -67,6 +67,9 @@ def _remove_parens(s):
 
 def _parse_ingredientes(raw):
     """Parse ingredient string: remove parens, split by comma and 'y'."""
+    # Algunas FT repiten el prefijo "Ingredientes:" dentro del propio
+    # valor de la celda (no solo como etiqueta de fila) — se quita si está.
+    raw = re.sub(r'^\s*Ingredientes\s*:\s*', '', raw, flags=re.IGNORECASE)
     clean = _remove_parens(raw)
     items = []
     for part in clean.split(","):
@@ -431,11 +434,21 @@ def _extract_pagina2(table):
         if "7.3 PARÁMETROS MICROBIOLÓGICOS" in cell0:
             in_mb = True
             continue
-        if in_mb and "7.4" in cell0:
+        if in_mb and re.match(r'^7\.\d', cell0):
+            # Cualquier siguiente subsección numerada (7.4, 7.5, 7.6...)
+            # marca el fin de la sección microbiológica, sin asumir que la
+            # siguiente sea exactamente "7.4" (algunas FT saltan números).
+            break
+        if in_mb and any(kw in cell0.upper() for kw in ("PESTICIDAS", "ALÉRGENOS", "ALERGENOS", "GLUTEN FREE", "METALES PESADOS", "MICOTOXINAS")):
+            break
+        if in_mb and re.match(r'^\*+\s*:', cell0):
+            # Notas al pie tipo "**: RSA Artículo..." o "*: Artículo 174..."
             break
         if in_mb:
             # Saltar filas de encabezado/meta
             if cell0 in ("RSA, ARTÍCULO 173", "PARÁMETRO", ""):
+                continue
+            if cell0.startswith("RSA, ARTÍCULO"):
                 continue
             # Saltar fila secundaria de encabezado (CLASES, n, c, m, M)
             if row[1] is None and "CLASES" in str(row).upper():
@@ -445,7 +458,7 @@ def _extract_pagina2(table):
             if not parametro:
                 continue
             valor_M = _clean(row[6]) if len(row) > 6 else ""
-            if valor_M == "-" or valor_M == "":
+            if valor_M in ("-", "--", "") or valor_M.strip("-") == "":
                 resultado = "0"
             else:
                 resultado = f"<{valor_M}"
@@ -458,11 +471,16 @@ def _extract_pagina2(table):
 
 def _extract_pagina3(table):
     """Extrae datos de envase primario y secundario de página 3."""
-    result = {}
+    result = {
+        "tipo_envase_primario": "",
+        "tipo_envase_secundario": "",
+    }
 
     # Tipo de envase: viene del encabezado de sección
     # "ENVASE PRIMARIO (FLOWPACK)" → tipo = FLOWPACK
     # "ENVASE SECUNDARIO (ESTUCHE)" → tipo = ESTUCHE
+    # Si el título no trae paréntesis (algunas FT no lo especifican ahí),
+    # se usa el valor de "Material de envase" como respaldo más abajo.
     in_primario = False
     in_secundario = False
     in_caja = False
@@ -470,6 +488,8 @@ def _extract_pagina3(table):
     primario = {}
     secundario = {}
     caja = {}
+    tipo_primario_de_parens = False
+    tipo_secundario_de_parens = False
 
     for row in table:
         if not row or not row[0]:
@@ -483,7 +503,9 @@ def _extract_pagina3(table):
             in_caja = False
             # Extraer tipo entre paréntesis
             m = re.search(r'\(([^)]+)\)', cell0)
-            result["tipo_envase_primario"] = m.group(1).title() if m else ""
+            if m:
+                result["tipo_envase_primario"] = m.group(1).title()
+                tipo_primario_de_parens = True
             continue
 
         if "ENVASE SECUNDARIO" in cell0:
@@ -491,7 +513,9 @@ def _extract_pagina3(table):
             in_secundario = True
             in_caja = False
             m = re.search(r'\(([^)]+)\)', cell0)
-            result["tipo_envase_secundario"] = m.group(1).title() if m else ""
+            if m:
+                result["tipo_envase_secundario"] = m.group(1).title()
+                tipo_secundario_de_parens = True
             continue
 
         if "CAJA MASTER" in cell0:
@@ -588,6 +612,15 @@ def _extract_pagina3(table):
     result["peso_bruto_cm"] = caja.get("peso_bruto", "")
     result["material_cm"] = caja.get("material", "")
     result["cantidad_unidades"] = caja.get("cantidad_unidades", "")
+
+    # Fallback: si el título de sección no traía el tipo entre paréntesis,
+    # se usa el Material de envase como valor editable por defecto (igual
+    # al criterio ya usado en otros campos: prefill que el usuario puede
+    # corregir si no corresponde).
+    if not tipo_primario_de_parens:
+        result["tipo_envase_primario"] = result.get("material_p", "") or "Bolsa plástica"
+    if not tipo_secundario_de_parens and result.get("material_s"):
+        result["tipo_envase_secundario"] = result.get("material_s", "")
 
     return result
 
