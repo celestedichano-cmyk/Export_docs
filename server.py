@@ -728,9 +728,11 @@ def generate_doc(template_id, data):
                             set_cell_value_xml(celdas_nuevas[1], valor, WNS)
                         nut_tbl.append(nueva_fila)
                         nuevas_filas.append(nueva_fila)
-                    # Poner borde inferior blanco en todas menos la última
-                    # fila nueva (que conserva el negro de la plantilla).
-                    for fila in nuevas_filas[:-1]:
+                    # Poner borde inferior blanco en Sodio (la fila modelo
+                    # original) y en todas las filas nuevas menos la última,
+                    # que es la única que debe conservar el cierre negro.
+                    filas_a_blanquear = [fila_modelo] + nuevas_filas[:-1]
+                    for fila in filas_a_blanquear:
                         for celda in fila.findall(f'{{{WNS}}}tc'):
                             tcPr = celda.find(f'{{{WNS}}}tcPr')
                             if tcPr is None:
