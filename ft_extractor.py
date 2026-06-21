@@ -140,6 +140,23 @@ def _extract_pagina1(table):
     # that looks like a 100g value (not in a multi-value stacked cell for the
     # first occurrence which is always 100g)
     
+    # --- Micronutrientes en columna lateral (ej. "Vitamina B₆ (mg)") ---
+    # Aparecen en la misma fila que "Energía (kcal)", en una columna a la
+    # derecha de la tabla principal (col índice 4=etiqueta, 5=valor 100g).
+    micronutrientes_extra = []
+    for row in table:
+        if row and row[0] and "Energía" in str(row[0]) and len(row) > 5:
+            etiqueta_lateral = row[4]
+            valor_lateral = row[5]
+            if etiqueta_lateral and "Vitamina" in str(etiqueta_lateral) and valor_lateral:
+                nombre = str(etiqueta_lateral).strip()
+                valor = _first_number(str(valor_lateral).split("\n")[0])
+                if valor:
+                    micronutrientes_extra.append(f"{nombre} | {valor}")
+            break
+    if micronutrientes_extra:
+        result["micronutrientes_extra"] = "\n".join(micronutrientes_extra)
+
     # First pass: try the "stacked values in Energía row" pattern (original FT)
     for row in table:
         if row and row[0] and "Energía" in str(row[0]):
