@@ -1094,6 +1094,19 @@ def import_dossier():
         import traceback
         return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
 
+@app.route('/api/import-metodologias', methods=['POST'])
+def import_metodologias():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+    f = request.files['file']
+    try:
+        from metodologia_extractor import extract_metodologias
+        mapa = extract_metodologias(f.read())
+        return jsonify({'metodologias': mapa})
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
+
 
 # ─── Google Drive OAuth routes ────────────────────────────────────────────────
 
