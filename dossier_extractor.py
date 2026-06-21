@@ -211,16 +211,43 @@ def extract_dossier(xlsx_bytes):
             if col_100:
                 break
         if col_100:
+            # Delimitar el bloque de la tabla nutricional: desde la fila
+            # "INFORMACIÓN NUTRICIONAL" más cercana hasta la nota al pie
+            # "(*) En relación..." — así evitamos capturar basura de otras
+            # secciones de la hoja como micronutrientes "extra" por error.
+            fila_inicio = None
+            fila_fin = None
             for row in ws_rotulo.iter_rows(min_row=1, max_row=ws_rotulo.max_row, max_col=col_100):
+                label_cell = row[1] if len(row) > 1 else None
+                if label_cell is None or not label_cell.value:
+                    continue
+                texto = _normalize(label_cell.value)
+                if "informacion nutricional" in texto and fila_inicio is None:
+                    fila_inicio = label_cell.row
+                if texto.startswith("(*) en relacion") and fila_inicio is not None and fila_fin is None:
+                    fila_fin = label_cell.row
+                    break
+            if fila_inicio is None:
+                fila_inicio = 1
+            if fila_fin is None:
+                fila_fin = ws_rotulo.max_row
+
+            micronutrientes_extra = []
+            for row in ws_rotulo.iter_rows(min_row=fila_inicio, max_row=fila_fin, max_col=col_100):
                 label_cell = row[1] if len(row) > 1 else None
                 if label_cell is None or not label_cell.value:
                     continue
                 label_norm = _normalize(label_cell.value)
                 campo = nut_map.get(label_norm)
-                if campo and campo not in result:
-                    val_cell = ws_rotulo.cell(row=label_cell.row, column=col_100)
-                    if isinstance(val_cell.value, (int, float)):
+                val_cell = ws_rotulo.cell(row=label_cell.row, column=col_100)
+                if campo:
+                    if campo not in result and isinstance(val_cell.value, (int, float)):
                         result[campo] = str(val_cell.value)
+                elif isinstance(val_cell.value, (int, float)):
+                    nombre_limpio = str(label_cell.value).strip()
+                    micronutrientes_extra.append(f"{nombre_limpio} | {val_cell.value}")
+            if micronutrientes_extra:
+                result["micronutrientes_extra"] = "\n".join(micronutrientes_extra)
 
     return result
 
