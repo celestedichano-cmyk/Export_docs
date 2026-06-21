@@ -142,6 +142,7 @@ TEMPLATES = {
             {"id": "azucares", "label": "Azúcares (g)", "type": "number", "placeholder": ""},
             {"id": "fibra", "label": "Fibra (g)", "type": "number", "placeholder": ""},
             {"id": "sodio", "label": "Sodio (mg)", "type": "number", "placeholder": ""},
+            {"id": "micronutrientes_extra", "label": "Micronutrientes adicionales (Nombre (unidad) | Valor, una fila por línea — ej: Calcio (mg) | 129)", "type": "textarea", "placeholder": ""},
             {"id": "fecha", "label": "Fecha del documento", "type": "text", "placeholder": today_es()},
         ] + FIRMANTE_FIELDS,
     },
@@ -704,6 +705,26 @@ def generate_doc(template_id, data):
                             rFonts.set(f'{{{WNS}}}hAnsi', 'NotFont Display')
                         else:
                             set_cell_value_xml(cell1, val, WNS)
+
+            # Micronutrientes adicionales: se insertan como filas nuevas al
+            # final de la tabla, clonando el formato de la última fila fija
+            # (Sodio) para mantener tipografía y bordes consistentes.
+            micro_raw = data.get('micronutrientes_extra', '').strip()
+            if micro_raw:
+                filas_actuales = nut_tbl.findall(f'{{{WNS}}}tr')
+                if filas_actuales:
+                    fila_modelo = filas_actuales[-1]
+                    for linea in micro_raw.split('\n'):
+                        linea = linea.strip()
+                        if not linea or '|' not in linea:
+                            continue
+                        nombre, valor = [p.strip() for p in linea.split('|', 1)]
+                        nueva_fila = copy.deepcopy(fila_modelo)
+                        celdas_nuevas = nueva_fila.findall(f'{{{WNS}}}tc')
+                        if len(celdas_nuevas) >= 2:
+                            set_cell_value_xml(celdas_nuevas[0], nombre, WNS)
+                            set_cell_value_xml(celdas_nuevas[1], valor, WNS)
+                        nut_tbl.append(nueva_fila)
 
     elif template_id == 'informe_aditivos':
         replace_all(doc, {'XX de XX del 2025': fecha})
