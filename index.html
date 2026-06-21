@@ -256,11 +256,18 @@
           📊 Cargar Dossier (xlsx)
           <input type="file" id="dossier-input" accept=".xlsx,.xls">
         </label>
+        <label class="btn btn-secondary" id="metodologia-label" style="display:none; cursor:pointer; font-size:13px; padding:7px 14px;">
+          🧪 Cargar Informe modelo (.docx)
+          <input type="file" id="metodologia-input" accept=".docx">
+        </label>
         <span class="ft-loading" id="ft-loading">
           <span class="ft-spinner"></span> Procesando FT...
         </span>
         <span class="ft-loading" id="dossier-loading">
           <span class="ft-spinner"></span> Procesando Dossier...
+        </span>
+        <span class="ft-loading" id="metodologia-loading">
+          <span class="ft-spinner"></span> Procesando Informe modelo...
         </span>
       </div>
 
@@ -361,6 +368,7 @@ function renderForm(id) {
   // Show pptx diagram section only for certificado_proceso
   document.getElementById('pptx-section').style.display = (id === 'certificado_proceso') ? 'block' : 'none';
   document.getElementById('dossier-label').style.display = 'inline-flex';
+  document.getElementById('metodologia-label').style.display = (id === 'informe_analisis') ? 'inline-flex' : 'none';
 
   const form = document.getElementById('doc-form');
   form.innerHTML = '';
@@ -582,6 +590,8 @@ document.addEventListener('input', e => {
 });
 
 // Ficha Técnica (PDF) import
+let bancoMetodologias = {};
+
 document.getElementById('ft-input').addEventListener('change', async e => {
   const file = e.target.files[0];
   if (!file) return;
@@ -599,6 +609,16 @@ document.getElementById('ft-input').addEventListener('change', async e => {
       const el = document.getElementById('f_' + campo);
       if (el && valor) { el.value = valor; encontrados++; }
     });
+    // Si ya hay un banco de metodologías cargado, completar fq_rows/mb_rows
+    // que la FT acaba de llenar pero sin metodología.
+    if (Object.keys(bancoMetodologias).length > 0) {
+      ['f_fq_rows', 'f_mb_rows'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el && el.value.trim()) {
+          el.value = aplicarMetodologias(el.value, bancoMetodologias);
+        }
+      });
+    }
     if (encontrados > 0) {
       showToast('Datos importados desde FT (' + encontrados + ' campos)', 'success');
     } else {
@@ -637,6 +657,71 @@ document.getElementById('dossier-input').addEventListener('change', async e => {
     }
   } catch(err) {
     showToast('Error leyendo Dossier: ' + err.message, 'error');
+  } finally {
+    loading.classList.remove('show');
+    e.target.value = '';
+  }
+});
+
+// ─── Informe de Análisis modelo: banco de metodologías ───────────────────────
+function normalizarTexto(s) {
+  return (s || '').toString().trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+function aplicarMetodologias(rowsText, mapa) {
+  if (!rowsText || !rowsText.trim()) return rowsText;
+  return rowsText.split('\n').map(linea => {
+    if (!linea.trim()) return linea;
+    const partes = linea.split('|').map(p => p.trim());
+    if (partes.length < 2) return linea;
+    let [parametro, metodologia, ...resto] = partes;
+    if (!metodologia) {
+      const match = mapa[normalizarTexto(parametro)];
+      if (match) metodologia = match;
+    }
+    const resultado = resto.join('|').trim();
+    return resultado || partes.length > 2
+      ? `${parametro} | ${metodologia} | ${resultado}`
+      : `${parametro} | ${metodologia}`;
+  }).join('\n');
+}
+
+document.getElementById('metodologia-input').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const loading = document.getElementById('metodologia-loading');
+  loading.classList.add('show');
+  const formData = new FormData();
+  formData.append('file', file);
+  try {
+    const res = await fetch('/api/import-metodologias', { method: 'POST', body: formData });
+    if (!res.ok) throw new Error('Error procesando el Informe modelo');
+    const result = await res.json();
+    if (result.error) throw new Error(result.error);
+    const mapa = result.metodologias || {};
+    bancoMetodologias = mapa;
+    if (Object.keys(mapa).length === 0) {
+      showToast('No se encontraron metodologías en el documento', 'error');
+      return;
+    }
+    let aplicadas = 0;
+    ['f_fq_rows', 'f_mb_rows'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el && el.value.trim()) {
+        const antes = el.value;
+        el.value = aplicarMetodologias(el.value, mapa);
+        if (el.value !== antes) aplicadas++;
+      }
+    });
+    if (aplicadas > 0) {
+      showToast('Metodologías aplicadas desde el informe modelo', 'success');
+    } else {
+      showToast('Banco de metodologías cargado — se aplicará al completar Fisicoquímicos/Microbiológicos', 'success');
+    }
+  } catch(err) {
+    showToast('Error leyendo Informe modelo: ' + err.message, 'error');
   } finally {
     loading.classList.remove('show');
     e.target.value = '';
