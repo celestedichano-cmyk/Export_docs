@@ -111,35 +111,180 @@ def _extract_pagina1(table):
     if raw_ing:
         result["ingredientes"] = _parse_ingredientes(raw_ing)
 
-    # --- Tabla nutricional: estrategia robusta ---
-    # Busca cada nutriente por nombre de fila y extrae el valor de 100g.
-    # Funciona aunque la estructura de columnas varíe entre FTs.
-    nut_search = {
-        "energia":     ["Energía"],
-        "proteina":    ["Proteínas"],
-        "grasa_total": ["Grasa total"],
-        "grasa_sat":   ["Grasas saturadas"],
-        "grasa_mono":  ["Grasas monoinsat"],
-        "grasa_poli":  ["Grasas poliinsat"],
-        "grasa_trans": ["Grasas trans"],
-        "colesterol":  ["Colesterol"],
-        "carb_disp":   ["Carbohidratos disp"],
-        "azucares":    ["Azúcares totales"],
-        "fibra":       ["Fibra dietética total"],
-        "sodio":       ["Sodio"],
+    # --- Tabla nutricional: estrategia unificada ---
+    # Las FT varían mucho en cómo agrupan valores: algunas ponen cada
+    # nutriente en su propia fila (1 valor en row[1]), otras apilan varios
+    # valores con \n en una sola celda y dejan las filas de etiqueta
+    # siguientes vacías (la cantidad de valores apilados varía: 3, 12, 16...),
+    # y alguna pone "100g 1porción" pegados en la misma línea del stack.
+    # Esta función recorre la tabla linealmente, consumiendo etiquetas y
+    # valores en el orden en que aparecen, sin asumir un tamaño de stack fijo.
+
+    etiqueta_a_campo = {
+        "energia": "energia",
+        "proteinas": "proteina",
+        "proteina": "proteina",
+        "grasa total": "grasa_total",
+        "grasas totales": "grasa_total",
+        "grasa saturada": "grasa_sat",
+        "grasas saturadas": "grasa_sat",
+        "grasa monoinsat": "grasa_mono",
+        "grasas monoinsat": "grasa_mono",
+        "grasa poliinsat": "grasa_poli",
+        "grasas poliinsat": "grasa_poli",
+        "grasa trans": "grasa_trans",
+        "grasas trans": "grasa_trans",
+        "acidos grasos trans": "grasa_trans",
+        "colesterol": "colesterol",
+        "carbohidratos totales": "carb_totales",
+        "hidratos de carbono totales": "carb_totales",
+        "carbohidratos disp": "carb_disp",
+        "hidratos de carbono disp": "carb_disp",
+        "azucares totales": "azucares",
+        "azucares": "azucares",
+        "azucar": None,
+        "lactosa": None,
+        "fibra dietetica total": "fibra",
+        "fibra soluble": None,
+        "fibra insoluble": None,
+        "sodio": "sodio",
     }
 
-    # Build a flat map: keyword → campo
-    kw_map = {}
-    for campo, keywords in nut_search.items():
-        for kw in keywords:
-            kw_map[kw] = campo
+    def _norm_simple(s):
+        s = str(s).strip().lower()
+        s = (s.replace("á", "a").replace("é", "e").replace("í", "i")
+               .replace("ó", "o").replace("ú", "u"))
+        return s
 
-    # Collect all text across all cells per row
-    # Strategy: for each nutrient row, find the first standalone number
-    # that looks like a 100g value (not in a multi-value stacked cell for the
-    # first occurrence which is always 100g)
-    
+    def _campo_de_etiqueta(etiqueta):
+        et_norm = _norm_simple(etiqueta)
+        # Buscar la clave más larga que matchee, para evitar que "azucar"
+        # capture indebidamente parte de "azucares totales" o viceversa.
+        mejor = None
+        for clave, c in etiqueta_a_campo.items():
+            if _norm_simple(clave) in et_norm:
+                if mejor is None or len(clave) > len(mejor[0]):
+                    mejor = (clave, c)
+        return mejor[1] if mejor else None
+
+    def _split_valor_doble(linea):
+        """
+        Si la línea tiene dos números separados por espacio (formato
+        '318 38' = valor 100g + valor porción pegados), devuelve solo el
+        primero (100g). Si es un solo número, lo devuelve tal cual.
+        """
+        partes = linea.strip().split()
+        if len(partes) >= 2 and _first_number(partes[0]) and _first_number(partes[1]):
+            return partes[0]
+        return linea.strip()
+
+    # Encontrar la fila de inicio de la tabla nutricional para no procesar
+    # texto de otras secciones por error.
+    idx_inicio = None
+    for i, row in enumerate(table):
+        if row and row[0] and "INFORMACIÓN NUTRICIONAL" in str(row[0]).upper():
+            idx_inicio = i
+            break
+    if idx_inicio is None:
+        idx_inicio = 0
+
+    # Caso especial conocido: stack de exactamente 16 valores en la celda de
+    # Energía (formato típico de FT de barras). Acá el orden interno incluye
+    # posiciones que NO tienen fila de etiqueta propia visible (Azúcar,
+    # Azúcar añadido, Fibra soluble, Fibra insoluble), por lo que el conteo
+    # genérico de filas se desalinea. Usamos el orden fijo ya verificado.
+    for row in table[idx_inicio:]:
+        if row and row[0] and "Energía" in str(row[0]):
+            cell = row[1] if len(row) > 1 else None
+            if cell and "\n" in str(cell):
+                vals16 = str(cell).split("\n")
+                if len(vals16) == 16:
+                    orden16 = [
+                        "energia", "proteina", "grasa_total", "grasa_sat",
+                        "grasa_mono", "grasa_poli", "grasa_trans", "colesterol",
+                        "carb_disp", "azucares", "_az", "_aza",
+                        "fibra", "_fibs", "_fibi", "sodio"
+                    ]
+                    for idx_v, campo in enumerate(orden16):
+                        if not campo.startswith("_"):
+                            result[campo] = vals16[idx_v].strip()
+                    result["fibra_total"] = result.get("fibra", "")
+                    idx_inicio = None
+            break
+
+    # Construir la secuencia de (etiqueta, valor_str_o_None) recorriendo
+    # filas desde el inicio de la tabla nutricional. Cuando una celda trae
+    # varios valores apilados con \n, se consumen como si fueran filas
+    # adicionales con la etiqueta de las filas siguientes (que vienen vacías).
+    # Si idx_inicio es None, ya se resolvió con el caso especial de 16 arriba.
+    secuencia = []  # lista de (etiqueta, valor)
+    pendientes_sin_etiqueta = []  # valores ya extraídos esperando etiqueta
+
+    for i in range(idx_inicio if idx_inicio is not None else len(table), len(table)):
+        row = table[i]
+        if not row or not row[0]:
+            continue
+        cell0 = str(row[0])
+        if "SELLOS" in cell0.upper() or "DESCRIPTORES" in cell0.upper():
+            break
+        # Una celda de etiqueta puede traer varias etiquetas apiladas
+        # (ej. "Carbohidratos disp...\nAzúcares...\nSodio...")
+        etiquetas_aqui = [l.strip() for l in cell0.split("\n") if l.strip()]
+        if not etiquetas_aqui:
+            continue
+
+        # Buscar el valor disponible SOLO en la columna 1 (100g). Si esa
+        # columna está vacía, NO se debe caer a la columna 2 (que es el
+        # valor de "1 porción", no de 100g) — es preferible dejar el campo
+        # vacío a inventar un dato incorrecto de la columna equivocada.
+        valor_cell = None
+        if len(row) > 1 and row[1] and str(row[1]).strip():
+            valor_cell = str(row[1]).strip()
+
+        if valor_cell and "\n" in valor_cell:
+            valores_aqui = [_split_valor_doble(l) for l in valor_cell.split("\n") if l.strip()]
+        elif valor_cell:
+            valores_aqui = [_split_valor_doble(valor_cell)]
+        else:
+            valores_aqui = []
+
+        # Emparejar: si hay valores pendientes de un stack anterior, esos
+        # tienen PRIORIDAD sobre cualquier valor individual que la fila
+        # pueda tener en su propia columna (que en algunos formatos es el
+        # valor de "1 porción" colado en la posición equivocada, no 100g).
+        for idx_et, et in enumerate(etiquetas_aqui):
+            if pendientes_sin_etiqueta:
+                secuencia.append((et, pendientes_sin_etiqueta.pop(0)))
+            elif idx_et < len(valores_aqui):
+                secuencia.append((et, valores_aqui[idx_et]))
+            else:
+                secuencia.append((et, None))
+        # Si esta fila trajo un stack nuevo más grande que sus propias
+        # etiquetas, el resto queda pendiente para las próximas filas.
+        if len(valores_aqui) > len(etiquetas_aqui) and "\n" in (valor_cell or ""):
+            ya_consumidos = max(0, len(etiquetas_aqui))
+            pendientes_sin_etiqueta.extend(valores_aqui[ya_consumidos:])
+
+    # Resolver pendientes contra futuras etiquetas sin valor (segunda pasada,
+    # por si el emparejamiento quedó desalineado en el primer recorrido)
+    resultado_secuencia = []
+    cola_valores = list(pendientes_sin_etiqueta)
+    for et, val in secuencia:
+        if val is None and cola_valores:
+            val = cola_valores.pop(0)
+        resultado_secuencia.append((et, val))
+
+    for et, val in resultado_secuencia:
+        campo = _campo_de_etiqueta(et)
+        if campo and campo not in result and val:
+            num = _first_number(val)
+            if num:
+                result[campo] = num.replace(".", ",") if "," in val and "." not in num else num
+                # Mantener formato original (coma o punto) tal como viene
+                result[campo] = num
+
+    result["fibra_total"] = result.get("fibra", "")
+
     # --- Micronutrientes en columna lateral (ej. "Vitamina B₆ (mg)") ---
     # Aparecen en la misma fila que "Energía (kcal)", en una columna a la
     # derecha de la tabla principal (col índice 4=etiqueta, 5=valor 100g).
@@ -154,166 +299,85 @@ def _extract_pagina1(table):
                 if valor:
                     micronutrientes_extra.append(f"{nombre} | {valor}")
             break
+
+    # Micronutrientes empaquetados en una celda de texto libre debajo de la
+    # tabla principal (ej. "Calcio (mg) 129 258 (32%*)\nFósforo (mg) 109...")
+    if not micronutrientes_extra:
+        for row in table:
+            if not row or not row[0]:
+                continue
+            texto_bloque = str(row[0])
+            if "(*)" in texto_bloque or any(
+                m in texto_bloque for m in ["Calcio (mg)", "Fósforo (mg)", "Zinc (mg)", "Vitamina D", "Vitamina B12"]
+            ):
+                for linea in texto_bloque.split("\n"):
+                    linea = linea.strip()
+                    if not linea or linea.startswith("(*)"):
+                        continue
+                    m = re.match(r"^(.+?\([^)]+\))\s+([\d.,]+)", linea)
+                    if m:
+                        nombre = m.group(1).strip()
+                        valor = m.group(2).strip()
+                        micronutrientes_extra.append(f"{nombre} | {valor}")
+                if micronutrientes_extra:
+                    break
+
     if micronutrientes_extra:
         result["micronutrientes_extra"] = "\n".join(micronutrientes_extra)
 
-    # First pass: try the "stacked values in Energía row" pattern.
-    # En este formato, la fila "Energía (kcal)" trae todos los valores de
-    # 100g apilados en una sola celda con \n, y las filas siguientes solo
-    # tienen la etiqueta (sin valor propio, porque ya viene en el stack).
-    # En vez de asumir un orden fijo universal (que varía según el producto:
-    # algunos tienen Fibra, otros Lactosa, distinta cantidad de filas),
-    # mapeamos por posición usando las etiquetas reales que aparecen.
-    etiqueta_a_campo = {
-        "energia": "energia",
-        "proteinas": "proteina",
-        "grasa total": "grasa_total",
-        "grasas totales": "grasa_total",
-        "grasa saturada": "grasa_sat",
-        "grasas saturadas": "grasa_sat",
-        "grasa monoinsat": "grasa_mono",
-        "grasas monoinsat": "grasa_mono",
-        "grasa poliinsat": "grasa_poli",
-        "grasas poliinsat": "grasa_poli",
-        "grasa trans": "grasa_trans",
-        "grasas trans": "grasa_trans",
-        "colesterol": "colesterol",
-        "carbohidratos totales": "carb_totales",
-        "carbohidratos disp": "carb_disp",
-        "azucares totales": "azucares",
-        "azucares": "azucares",
-        "lactosa": None,  # se ignora: no es campo del template
-        "fibra dietetica total": "fibra",
-        "fibra soluble": None,
-        "fibra insoluble": None,
-        "sodio": "sodio",
-    }
+    # --- Fallback: tabla nutricional completa en una sola celda de texto ---
+    # Algunas FT (ej. NotMayo Frasco) ponen toda la tabla "INFORMACIÓN
+    # NUTRICIONAL ... Energía (kcal) 324 39 ... Sodio (mg) 730 88" en un
+    # único bloque de texto con saltos de línea, sin columnas separadas.
+    # Si los macronutrientes principales siguen vacíos, se intenta este
+    # parser dedicado antes de devolver el resultado.
+    if "energia" not in result:
+        etiqueta_a_campo_fallback = {
+            "energia (kcal)": "energia",
+            "proteinas (g)": "proteina",
+            "proteina (g)": "proteina",
+            "grasas totales (g)": "grasa_total",
+            "grasa total (g)": "grasa_total",
+            "grasas saturadas (g)": "grasa_sat",
+            "grasa saturada (g)": "grasa_sat",
+            "grasas monoinsat": "grasa_mono",
+            "grasas poliinsat": "grasa_poli",
+            "grasas trans (g)": "grasa_trans",
+            "acidos grasos trans": "grasa_trans",
+            "colesterol (mg)": "colesterol",
+            "carbohidratos totales (g)": "carb_totales",
+            "hidratos de carbono totales (g)": "carb_totales",
+            "carbohidratos disp": "carb_disp",
+            "hidratos de carbono disp": "carb_disp",
+            "azucares totales (g)": "azucares",
+            "fibra dietetica total (g)": "fibra",
+            "sodio (mg)": "sodio",
+        }
+        for row in table:
+            if not row or not row[0]:
+                continue
+            texto_bloque = str(row[0])
+            if "INFORMACI" not in texto_bloque.upper() or "ENERG" not in texto_bloque.upper():
+                continue
+            for linea in texto_bloque.split("\n"):
+                linea_norm = _norm_simple(linea)
+                campo = None
+                mejor_clave = ""
+                for clave, c in etiqueta_a_campo_fallback.items():
+                    if clave in linea_norm and len(clave) > len(mejor_clave):
+                        mejor_clave, campo = clave, c
+                if campo and campo not in result:
+                    # El primer número que sigue al texto de la etiqueta es
+                    # el valor de 100g (el segundo es 1 porción, se ignora).
+                    pos_etiqueta = linea_norm.find(mejor_clave)
+                    texto_tras_etiqueta = linea[pos_etiqueta + len(mejor_clave):] if pos_etiqueta >= 0 else linea
+                    numeros = re.findall(r'[\d]+(?:[.,][\d]+)?', texto_tras_etiqueta)
+                    if numeros:
+                        result[campo] = numeros[0]
+            break
 
-    def _norm_simple(s):
-        s = str(s).strip().lower()
-        s = (s.replace("á", "a").replace("é", "e").replace("í", "i")
-               .replace("ó", "o").replace("ú", "u"))
-        return s
+    result["fibra_total"] = result.get("fibra", result.get("fibra_total", ""))
 
-    for idx_row, row in enumerate(table):
-        if row and row[0] and "Energía" in str(row[0]):
-            for cell in row[1:]:
-                if cell and "\n" in str(cell):
-                    vals = str(cell).split("\n")
-                    if len(vals) < 5:
-                        continue
-
-                    if len(vals) == 16:
-                        # Formato conocido y estable (FTs de barras): orden
-                        # fijo verificado, más robusto que el mapeo dinámico
-                        # cuando la FT tiene filas irregulares intercaladas.
-                        nutrientes_orden = [
-                            "energia", "proteina", "grasa_total", "grasa_sat",
-                            "grasa_mono", "grasa_poli", "grasa_trans", "colesterol",
-                            "carb_disp", "azucares", "_az_g", "_az_an",
-                            "fibra", "_fib_s", "_fib_i", "sodio"
-                        ]
-                        for i, campo in enumerate(nutrientes_orden):
-                            if i < len(vals) and not campo.startswith("_"):
-                                result[campo] = vals[i].strip()
-                        result["fibra_total"] = result.get("fibra", "")
-                        return result
-
-                    # Formato distinto (ej. bebidas líquidas, sin fibra):
-                    # mapeo dinámico por etiquetas reales de filas siguientes.
-                    etiquetas = ["energia (kcal)"]
-                    j = idx_row + 1
-                    intentos = 0
-                    while len(etiquetas) < len(vals) and j < len(table) and intentos < 30:
-                        sig = table[j]
-                        tiene_otro_valor = any(
-                            sig[c] for c in range(1, len(sig)) if c != 0
-                        ) if sig else False
-                        if sig and sig[0] and not tiene_otro_valor:
-                            for linea in str(sig[0]).split("\n"):
-                                if linea.strip():
-                                    etiquetas.append(linea.strip())
-                            j += 1
-                        else:
-                            break
-                        intentos += 1
-                    for i, val in enumerate(vals):
-                        if i >= len(etiquetas):
-                            break
-                        et_norm = _norm_simple(etiquetas[i])
-                        campo = None
-                        for clave, c in etiqueta_a_campo.items():
-                            if _norm_simple(clave) in et_norm:
-                                campo = c
-                                break
-                        if campo and campo not in result:
-                            result[campo] = val.strip()
-                    result["fibra_total"] = result.get("fibra", "")
-
-                    # Micronutrientes adicionales: a veces vienen en una
-                    # celda de texto libre debajo de la tabla principal, con
-                    # formato "Nombre (unidad) valor valor_porcion (xx%*)"
-                    # repetido línea por línea (ej. Calcio, Fósforo, Zinc...).
-                    micronutrientes_extra = []
-                    k = j
-                    while k < len(table):
-                        fila_extra = table[k]
-                        if fila_extra and fila_extra[0] and not (len(fila_extra) > 1 and fila_extra[1]):
-                            texto_bloque = str(fila_extra[0])
-                            for linea in texto_bloque.split("\n"):
-                                linea = linea.strip()
-                                if not linea or linea.startswith("(*)"):
-                                    continue
-                                m = re.match(r"^(.+?\([^)]+\))\s+([\d.,]+)", linea)
-                                if m:
-                                    nombre = m.group(1).strip()
-                                    valor = m.group(2).strip()
-                                    micronutrientes_extra.append(f"{nombre} | {valor}")
-                            k += 1
-                        else:
-                            break
-                    if micronutrientes_extra:
-                        result["micronutrientes_extra"] = "\n".join(micronutrientes_extra)
-
-                    return result
-
-    # Second pass: row-by-row search (new FT layout)
-    # col[1] = 100g values, col[2] = 1 porción values
-    # Only use col[1] — col[2] are porción values, not 100g
-    for row in table:
-        if not row or not row[0]:
-            continue
-        cell0 = str(row[0])
-
-        matched_campo = None
-        for kw, campo in kw_map.items():
-            if kw in cell0:
-                matched_campo = campo
-                break
-
-        if matched_campo and matched_campo not in result:
-            # Only use col[1] for 100g values
-            cell1 = row[1] if len(row) > 1 else None
-            if cell1 and str(cell1).strip() and str(cell1) != "None":
-                cell_str = str(cell1).strip()
-                if "\n" in cell_str:
-                    val = _first_number(cell_str.split("\n")[0])
-                else:
-                    val = _first_number(cell_str)
-                if val:
-                    result[matched_campo] = val
-
-        # Fibra row: col[1] stacked = fibra, fibra_sol, fibra_insol, sodio (100g)
-        if "Fibra dietética total" in cell0:
-            cell1 = row[1] if len(row) > 1 else None
-            if cell1 and "\n" in str(cell1):
-                lines = str(cell1).strip().split("\n")
-                if len(lines) >= 1 and "fibra" not in result:
-                    result["fibra"] = _first_number(lines[0])
-                if len(lines) >= 4:
-                    result["sodio"] = _first_number(lines[3])
-
-    result["fibra_total"] = result.get("fibra", "")
     return result
 
 
