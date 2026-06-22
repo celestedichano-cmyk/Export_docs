@@ -5,32 +5,76 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Documentación de Exportación — The Not Company</title>
 <style>
+  /*
+    Tipografía de marca: "NotFont Titling" (títulos) y "NotFont Display"
+    (todo lo demás), según la identidad de NotCo.
+
+    Estas fuentes no se distribuyen como archivos web estándar (.woff/.ttf)
+    en los assets que tenemos — por eso se declaran con `local()`, que las
+    toma del sistema operativo si ya están instaladas (como suele pasar en
+    los equipos corporativos de NotCo, ya que Word/PowerPoint las usan).
+    Si el navegador de quien use esta app no las tiene instaladas, cae
+    automáticamente al stack de fallback sin romper el layout.
+  */
+  @font-face {
+    font-family: 'NotFont Titling';
+    src: local('NotFont Titling'), local('NotFontTitling'), local('NotFont Titling Bold');
+    font-weight: 400 800;
+  }
+  @font-face {
+    font-family: 'NotFont Display';
+    src: local('NotFont Display'), local('NotFontDisplay'), local('NotFont Display Bold');
+    font-weight: 400 800;
+  }
+
   :root {
     --bg: #f7f6f2;
     --card: #ffffff;
     --border: #e2e0d8;
-    --accent: #1a1a1a;
-    --accent2: #2d6a4f;
-    --accent2-light: #d8f3dc;
+    --accent: #000000;
+    --accent2: #00b8a3;
+    --accent2-light: #d6f5f0;
     --muted: #6b6b67;
     --red: #c0392b;
     --red-light: #fdecea;
-    --font: 'Segoe UI', system-ui, sans-serif;
+
+    /* Paleta NotCo (de Template_Final_Firma_2026.pptx) */
+    --notco-black: #000000;
+    --notco-teal: #00d1ba;
+    --notco-purple: #aa00ff;
+    --notco-magenta: #ff0093;
+    --notco-yellow: #ffcb00;
+
+    --font-titling: 'NotFont Titling', 'Montserrat', Arial, sans-serif;
+    --font-display: 'NotFont Display', 'Montserrat', Arial, sans-serif;
+    --font: var(--font-display);
     --radius: 10px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: var(--font); background: var(--bg); color: var(--accent); min-height: 100vh; }
+  body { font-family: var(--font-display); background: var(--bg); color: var(--accent); min-height: 100vh; }
+
+  h1, h2, h3, h4,
+  .form-header h1, .section-title, .welcome h3, .sidebar h2,
+  header .logo, .tmpl-btn, .btn {
+    font-family: var(--font-titling);
+  }
 
   header {
-    background: var(--accent);
+    background: var(--notco-black);
     color: #fff;
-    padding: 18px 32px;
+    padding: 16px 32px;
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 14px;
   }
-  header .logo { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; }
-  header .subtitle { font-size: 13px; color: #aaa; margin-top: 2px; }
+  header .logo-mark {
+    width: 30px; height: 30px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  header .logo-mark img { width: 100%; height: 100%; object-fit: contain; }
+  header .logo { font-size: 19px; font-weight: 700; letter-spacing: -0.3px; line-height: 1.2; }
+  header .subtitle { font-size: 12.5px; color: #999; margin-top: 1px; font-family: var(--font-display); }
+
 
   .layout { display: flex; min-height: calc(100vh - 64px); }
 
@@ -117,7 +161,7 @@
   }
   .field input:focus, .field textarea:focus {
     outline: none; border-color: var(--accent2);
-    box-shadow: 0 0 0 3px rgba(45,106,79,.12);
+    box-shadow: 0 0 0 3px rgba(0,184,163,.14);
   }
   .field textarea { resize: vertical; min-height: 100px; line-height: 1.5; }
   .field .hint { font-size: 11.5px; color: var(--muted); line-height: 1.4; }
@@ -208,6 +252,9 @@
 <body>
 
 <header>
+  <div class="logo-mark">
+    <img src="data:image/png;base64,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" alt="NotCo">
+  </div>
   <div>
     <div class="logo">The Not Company · Export Docs</div>
     <div class="subtitle">Generador de documentación técnica para exportación</div>
