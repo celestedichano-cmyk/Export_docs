@@ -670,15 +670,58 @@ function normalizarTexto(s) {
     .replace(/\s+/g, ' ');
 }
 
+// Normalización tolerante para matchear parámetros entre la FT y el informe
+// modelo cuando la redacción exacta difiere: prefijos como "Recuento",
+// sufijos como "en 25g", puntuación variable ("E.coli" vs "e. coli"),
+// asteriscos de nota al pie, u orden de palabras distinto ("aerobios
+// mesófilos" vs "mesófilos aerobios"). Devuelve las palabras significativas
+// sin puntuación, ordenadas alfabéticamente, para que la comparación sea
+// insensible a esas variaciones.
+const PALABRAS_RELLENO = new Set(['recuento', 'de', 'del', 'la', 'el', 'los', 'las']);
+const SUFIJO_MUESTREO_RE = /\s+en\s+\d+\s*g\.?\s*$/;
+
+function normalizarFuzzy(s) {
+  let t = normalizarTexto(s);
+  t = t.replace(SUFIJO_MUESTREO_RE, '');
+  t = t.replace(/[^\w\s]/g, ' '); // quita puntuación y asteriscos de nota al pie
+  const palabras = t.split(/\s+/).filter(p => p && !PALABRAS_RELLENO.has(p));
+  palabras.sort();
+  return palabras.join(' ');
+}
+
+// Construye un índice {clave_fuzzy: metodologia} a partir del mapa exacto.
+// Si dos parámetros distintos colisionan en la misma clave fuzzy, se
+// descarta esa clave (ambigua) en vez de aplicar una metodología incorrecta.
+function construirIndiceFuzzy(mapa) {
+  const indice = {};
+  const ambiguas = new Set();
+  Object.entries(mapa).forEach(([claveNormal, metodologia]) => {
+    const claveFuzzy = normalizarFuzzy(claveNormal);
+    if (!claveFuzzy) return;
+    if (Object.prototype.hasOwnProperty.call(indice, claveFuzzy) && indice[claveFuzzy] !== metodologia) {
+      ambiguas.add(claveFuzzy);
+    } else {
+      indice[claveFuzzy] = metodologia;
+    }
+  });
+  ambiguas.forEach(c => delete indice[c]);
+  return indice;
+}
+
 function aplicarMetodologias(rowsText, mapa) {
   if (!rowsText || !rowsText.trim()) return rowsText;
+  const indiceFuzzy = construirIndiceFuzzy(mapa);
   return rowsText.split('\n').map(linea => {
     if (!linea.trim()) return linea;
     const partes = linea.split('|').map(p => p.trim());
     if (partes.length < 2) return linea;
     let [parametro, metodologia, ...resto] = partes;
     if (!metodologia) {
-      const match = mapa[normalizarTexto(parametro)];
+      // 1) Match exacto (redacción idéntica salvo tildes/mayúsculas).
+      let match = mapa[normalizarTexto(parametro)];
+      // 2) Match tolerante: ignora prefijos como "Recuento", sufijos como
+      // "en 25g", puntuación variable y orden de palabras.
+      if (!match) match = indiceFuzzy[normalizarFuzzy(parametro)];
       if (match) metodologia = match;
     }
     const resultado = resto.join('|').trim();
