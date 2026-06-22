@@ -678,21 +678,70 @@ function normalizarTexto(s) {
 
 // Normalización tolerante para matchear parámetros entre la FT y el informe
 // modelo cuando la redacción exacta difiere: prefijos como "Recuento",
-// sufijos como "en 25g", puntuación variable ("E.coli" vs "e. coli"),
-// asteriscos de nota al pie, u orden de palabras distinto ("aerobios
-// mesófilos" vs "mesófilos aerobios"). Devuelve las palabras significativas
-// sin puntuación, ordenadas alfabéticamente, para que la comparación sea
-// insensible a esas variaciones.
+// sufijos como "en 25g", unidades entre paréntesis ("Peso (g)" vs "peso"),
+// puntuación variable ("E.coli" vs "e. coli"), asteriscos de nota al pie,
+// abreviatura de género microbiológico ("S. aureus" vs "Staphilococcus
+// aureus"), u orden de palabras distinto ("aerobios mesófilos" vs
+// "mesófilos aerobios").
 const PALABRAS_RELLENO = new Set(['recuento', 'de', 'del', 'la', 'el', 'los', 'las']);
 const SUFIJO_MUESTREO_RE = /\s+en\s+\d+\s*g\.?\s*$/;
 
-function normalizarFuzzy(s) {
+// Lista (sin ordenar) de palabras significativas — usada tanto para el
+// match por string ordenado como para el match por abreviatura.
+function palabrasSignificativas(s) {
   let t = normalizarTexto(s);
   t = t.replace(SUFIJO_MUESTREO_RE, '');
+  t = t.replace(/\([^)]*\)/g, ' '); // quita unidades entre paréntesis
   t = t.replace(/[^\w\s]/g, ' '); // quita puntuación y asteriscos de nota al pie
-  const palabras = t.split(/\s+/).filter(p => p && !PALABRAS_RELLENO.has(p));
-  palabras.sort();
+  return t.split(/\s+/).filter(p => p && !PALABRAS_RELLENO.has(p));
+}
+
+function normalizarFuzzy(s) {
+  const palabras = palabrasSignificativas(s).slice().sort();
   return palabras.join(' ');
+}
+
+// Dos palabras se consideran equivalentes si son iguales, o si una es la
+// inicial de la otra (resuelve géneros microbiológicos abreviados en un
+// documento y completos en el otro, p.ej. "S." vs "Staphilococcus").
+function palabrasEquivalentes(pa, pb) {
+  if (pa === pb) return true;
+  if (pa.length === 1 && pb.startsWith(pa)) return true;
+  if (pb.length === 1 && pa.startsWith(pb)) return true;
+  return false;
+}
+
+function permutaciones(arr) {
+  if (arr.length <= 1) return [arr];
+  const result = [];
+  arr.forEach((item, i) => {
+    const resto = arr.slice(0, i).concat(arr.slice(i + 1));
+    permutaciones(resto).forEach(p => result.push([item, ...p]));
+  });
+  return result;
+}
+
+function listasCoincidenAbreviado(listaA, listaB) {
+  if (listaA.length !== listaB.length || listaA.length === 0) return false;
+  return permutaciones(listaB).some(perm =>
+    listaA.every((a, i) => palabrasEquivalentes(a, perm[i]))
+  );
+}
+
+// Busca en el mapa una entrada cuyas palabras coincidan con las del
+// parámetro permitiendo abreviaturas de género. Si más de una entrada con
+// metodología distinta matchea, se considera ambiguo y no se aplica
+// ninguna (mismo criterio de seguridad que el índice fuzzy exacto).
+function matchAbreviado(palabrasParam, mapa) {
+  if (!palabrasParam.length) return '';
+  const encontradas = new Set();
+  Object.entries(mapa).forEach(([claveNormal, metodologia]) => {
+    const palabrasClave = palabrasSignificativas(claveNormal);
+    if (listasCoincidenAbreviado(palabrasParam, palabrasClave)) {
+      encontradas.add(metodologia);
+    }
+  });
+  return encontradas.size === 1 ? [...encontradas][0] : '';
 }
 
 // Construye un índice {clave_fuzzy: metodologia} a partir del mapa exacto.
@@ -726,8 +775,12 @@ function aplicarMetodologias(rowsText, mapa) {
       // 1) Match exacto (redacción idéntica salvo tildes/mayúsculas).
       let match = mapa[normalizarTexto(parametro)];
       // 2) Match tolerante: ignora prefijos como "Recuento", sufijos como
-      // "en 25g", puntuación variable y orden de palabras.
+      // "en 25g", unidades entre paréntesis, puntuación variable y orden
+      // de palabras.
       if (!match) match = indiceFuzzy[normalizarFuzzy(parametro)];
+      // 3) Match con abreviatura de género microbiológico: "S. aureus" en
+      // la FT vs "Staphilococcus aureus" en el modelo (o viceversa).
+      if (!match) match = matchAbreviado(palabrasSignificativas(parametro), mapa);
       if (match) metodologia = match;
     }
     const resultado = resto.join('|').trim();
