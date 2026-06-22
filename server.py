@@ -100,7 +100,7 @@ TEMPLATES = {
     "informe_analisis": {
         "label": "Informe de Análisis",
         "file": "Template_INFORME_ANA_LISIS.docx",
-        "help": "Cargá la Ficha Técnica (PDF) para autocompletar el nombre del producto y los parámetros sensoriales, fisicoquímicos y microbiológicos. El nombre del producto también se autocompleta con el Dossier (xlsx). Tildá qué tablas incluir en el documento final.",
+        "help": "Cargá la Ficha Técnica (PDF) para autocompletar el nombre del producto y los parámetros sensoriales, fisicoquímicos y microbiológicos. El nombre del producto también se autocompleta con el Dossier (xlsx). También podés cargar un Informe de Análisis modelo o anterior (.docx) para autocompletar automáticamente la columna de Metodología en Fisicoquímicos y Microbiológicos, reutilizando las metodologías ya usadas en ese informe sin tener que volver a tipearlas. Tildá qué tablas incluir en el documento final.",
         "fields": [
             {"id": "producto", "label": "Nombre del producto", "type": "text", "placeholder": "NOT Burger 113g"},
             {"id": "incluir_fq", "label": "Incluir Análisis Fisicoquímicos", "type": "checkbox", "checked": True},
