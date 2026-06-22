@@ -333,7 +333,7 @@ function renderSidebar() {
   const list = document.getElementById('tmpl-list');
   list.innerHTML = Object.entries(TEMPLATES).map(([id, t]) => {
     const [cls, lbl] = tagType(id);
-    return `<button class="tmpl-btn" onclick="selectTemplate('${id}')">
+    return `<button class="tmpl-btn" data-id="${id}" onclick="selectTemplate('${id}')">
       <span class="tmpl-tag tag-${cls}">${lbl}</span>${t.label}
     </button>`;
   }).join('');
@@ -341,9 +341,8 @@ function renderSidebar() {
 
 function selectTemplate(id) {
   currentTmpl = id;
-  document.querySelectorAll('.tmpl-btn').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.tmpl-btn').forEach(b => {
-    if (b.textContent.includes(TEMPLATES[id].label)) b.classList.add('active');
+    b.classList.toggle('active', b.dataset.id === id);
   });
   renderForm(id);
 }
