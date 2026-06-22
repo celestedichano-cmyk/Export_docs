@@ -1,5 +1,6 @@
 from docx import Document
 import io
+import itertools
 import unicodedata
 
 
@@ -27,20 +28,84 @@ def _normalize_fuzzy(text):
     Normalización tolerante para matchear parámetros entre la FT y el
     informe modelo, cuando la redacción exacta difiere (prefijos como
     "Recuento", sufijos como "en 25g", puntuación variable como "E.coli"
-    vs "e. coli", asteriscos de nota al pie, u orden de palabras distinto
-    como "aerobios mesófilos" vs "mesófilos aerobios").
+    vs "e. coli", asteriscos de nota al pie, unidades entre paréntesis
+    como "Peso (g)" vs "peso", u orden de palabras distinto como
+    "aerobios mesófilos" vs "mesófilos aerobios").
 
     Devuelve las palabras significativas, sin puntuación ni acentos,
     ordenadas alfabéticamente, para que la comparación sea insensible al
     orden y a estas variaciones menores de redacción.
     """
+    return " ".join(sorted(_palabras_significativas(text)))
+
+
+def _palabras_significativas(text):
+    """
+    Lista (sin ordenar) de las palabras significativas de un parámetro,
+    para usar tanto en el match por string ordenado (_normalize_fuzzy)
+    como en el match por abreviatura (_listas_coinciden_abreviado).
+    """
     t = _normalize(text)
     t = _SUFIJO_MUESTREO_RE.sub("", t)
+    # Quitar unidades entre paréntesis — p.ej. "Peso (g)" vs "peso" en el
+    # modelo, donde la unidad no forma parte de la identidad del parámetro.
+    t = _re.sub(r'\([^)]*\)', ' ', t)
     # Quitar puntuación y asteriscos de nota al pie; mantener letras,
     # números y espacios.
     t = _re.sub(r'[^\w\s]', ' ', t)
-    palabras = [p for p in t.split() if p and p not in _PALABRAS_RELLENO]
-    return " ".join(sorted(palabras))
+    return [p for p in t.split() if p and p not in _PALABRAS_RELLENO]
+
+
+def _palabras_equivalentes(pa, pb):
+    """
+    Dos palabras se consideran equivalentes si son iguales, o si una es
+    la inicial de la otra — esto resuelve el caso de nombres binomiales
+    microbiológicos donde el género aparece abreviado en un documento y
+    completo en el otro (p.ej. "S." vs "Staphilococcus", "B." vs
+    "Bacillus"), independientemente de en cuál de los dos documentos
+    esté la forma abreviada.
+    """
+    if pa == pb:
+        return True
+    if len(pa) == 1 and pb.startswith(pa):
+        return True
+    if len(pb) == 1 and pa.startswith(pb):
+        return True
+    return False
+
+
+def _listas_coinciden_abreviado(lista_a, lista_b):
+    """
+    Compara dos listas de palabras (mismo largo) permitiendo que el orden
+    difiera y que una palabra de una lista sea la abreviatura (inicial) de
+    la palabra correspondiente en la otra.
+    """
+    if len(lista_a) != len(lista_b) or not lista_a:
+        return False
+    for permutacion in itertools.permutations(lista_b):
+        if all(_palabras_equivalentes(a, b) for a, b in zip(lista_a, permutacion)):
+            return True
+    return False
+
+
+def _match_abreviado(palabras_param, mapa):
+    """
+    Busca en el mapa una entrada cuyas palabras coincidan con las del
+    parámetro permitiendo abreviaturas de género (ver
+    _palabras_equivalentes). Si más de una entrada con metodología
+    distinta matchea, se considera ambiguo y no se aplica ninguna —mismo
+    criterio de seguridad que en el índice fuzzy exacto.
+    """
+    if not palabras_param:
+        return ""
+    encontradas = set()
+    for clave_normal, metodologia in mapa.items():
+        palabras_clave = _palabras_significativas(clave_normal)
+        if _listas_coinciden_abreviado(palabras_param, palabras_clave):
+            encontradas.add(metodologia)
+    if len(encontradas) == 1:
+        return next(iter(encontradas))
+    return ""
 
 
 def _build_fuzzy_index(mapa):
@@ -140,8 +205,14 @@ def aplicar_metodologias(rows_text, mapa, separador="|"):
             metodologia = mapa.get(_normalize(parametro), "")
         if not metodologia:
             # 2) Match tolerante: ignora prefijos como "Recuento", sufijos
-            # como "en 25g", puntuación variable y orden de palabras.
+            # como "en 25g", unidades entre paréntesis, puntuación variable
+            # y orden de palabras.
             metodologia = indice_fuzzy.get(_normalize_fuzzy(parametro), "")
+        if not metodologia:
+            # 3) Match con abreviatura de género microbiológico: "S.
+            # aureus" en la FT vs "Staphilococcus aureus" en el modelo (o
+            # viceversa).
+            metodologia = _match_abreviado(_palabras_significativas(parametro), mapa)
 
         nueva_linea = f"{parametro} | {metodologia} | {resultado}" if resultado or len(partes) > 2 else f"{parametro} | {metodologia}"
         lineas_nuevas.append(nueva_linea)
