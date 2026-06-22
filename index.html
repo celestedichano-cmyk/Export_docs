@@ -375,9 +375,15 @@ function renderForm(id) {
 
   // Group fields
   const checkboxFields = t.fields.filter(f => f.type === 'checkbox');
-  const generalFields = t.fields.filter(f => f.id !== 'fecha' && f.type !== 'textarea' && f.type !== 'checkbox');
+  // Nombre/cargo del firmante y fecha van siempre juntos al final, en su
+  // propia sección "Firma y fecha" — no se mezclan con el resto de los
+  // campos de texto generales (eso es lo que hacía que en templates con
+  // muchos campos, como Informe de Análisis, el firmante apareciera pegado
+  // en medio de la grilla en vez de al final del formulario).
+  const firmaIds = ['firmante_nombre', 'firmante_cargo', 'fecha'];
+  const generalFields = t.fields.filter(f => !firmaIds.includes(f.id) && f.type !== 'textarea' && f.type !== 'checkbox');
   const textareaFields = t.fields.filter(f => f.type === 'textarea');
-  const fechaField = t.fields.find(f => f.id === 'fecha');
+  const firmaFields = t.fields.filter(f => firmaIds.includes(f.id));
 
   if (checkboxFields.length) {
     const sec = document.createElement('div');
@@ -411,12 +417,12 @@ function renderForm(id) {
     form.appendChild(sec);
   }
 
-  if (fechaField) {
+  if (firmaFields.length) {
     const sec = document.createElement('div');
     sec.innerHTML = '<div class="section-title">Firma y fecha</div>';
     const grid = document.createElement('div');
     grid.className = 'field-grid';
-    grid.appendChild(makeField(fechaField));
+    firmaFields.forEach(f => grid.appendChild(makeField(f)));
     sec.appendChild(grid);
     form.appendChild(sec);
   }
