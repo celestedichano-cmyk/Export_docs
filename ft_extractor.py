@@ -345,10 +345,16 @@ def _extract_pagina2(table):
         if not row or not row[0]:
             continue
         cell0 = str(row[0]).strip()
-        if "7.2 PARÁMETROS FISICOQUÍMICOS" in cell0:
+        # El título de esta sección no siempre es "7.2 PARÁMETROS
+        # FISICOQUÍMICOS" — la numeración varía entre FT (puede ser 7.1,
+        # 7.2, etc., o incluso faltar la sección de Sensoriales antes y
+        # correr todo un número). Se detecta por el texto, no por el número.
+        if re.search(r'PAR[ÁA]METROS\s+FISICOQU[ÍI]MICOS', cell0, re.IGNORECASE):
             in_fq = True
             continue
-        if in_fq and "7.3" in cell0:
+        # Cualquier otro encabezado de sección numerado (7.x) marca el fin,
+        # sea cual sea el número que le toque a la siguiente sección.
+        if in_fq and re.match(r'^\d+\.\d+\b', cell0):
             break
         if in_fq and cell0 and cell0 != "PARÁMETRO":
             parametro = _clean(row[0])
@@ -364,12 +370,14 @@ def _extract_pagina2(table):
         if not row or not row[0]:
             continue
         cell0 = str(row[0]).strip()
-        if "7.3 PARÁMETROS MICROBIOLÓGICOS" in cell0:
+        # Mismo criterio que en Fisicoquímicos: se detecta por el texto del
+        # título, no por el número de sección (que varía entre FT).
+        if re.search(r'PAR[ÁA]METROS\s+MICROBIOL[ÓO]GICOS', cell0, re.IGNORECASE):
             in_mb = True
             continue
-        if in_mb and re.match(r'^7\.\d', cell0):
-            break
-        if in_mb and any(kw in cell0.upper() for kw in ("PESTICIDAS", "ALÉRGENOS", "ALERGENOS", "GLUTEN FREE", "METALES PESADOS", "MICOTOXINAS")):
+        if in_mb and re.match(r'^\d+\.\d+\b', cell0):
+            # Cualquier siguiente sección numerada marca el fin, sin asumir
+            # un número específico.
             break
         if in_mb and re.match(r'^\*+\s*\S', cell0) and (len(row) <= 1 or not row[1] or not str(row[1]).strip()):
             # Notas al pie tipo "**: RSA Artículo..." o "* RSA, Art. 173,
