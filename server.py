@@ -877,6 +877,24 @@ def generate_doc(template_id, data):
                     new_para = Paragraph(new_p_el, last_para._parent)
                     fill_aditivo_para(new_para, nombre, funcion)
 
+            # Si hay menos aditivos reales que bloques de placeholder fijos
+            # en el template, los bloques sobrantes se eliminan en vez de
+            # dejarlos con el texto de ejemplo "ADITIVO" / "Función
+            # tecnológica" (lo mismo que se ve al clonar de más arriba,
+            # pero a la inversa).
+            elif len(pairs) < len(aditivo_paras):
+                for para in aditivo_paras[len(pairs):]:
+                    p_el = para._p
+                    siguiente = p_el.getnext()
+                    if siguiente is not None and siguiente.tag == qn('w:p'):
+                        texto_siguiente = ''.join(
+                            t.text or '' for t in siguiente.findall('.//' + qn('w:t'))
+                        )
+                        if not texto_siguiente.strip() and siguiente.getparent() is not None:
+                            siguiente.getparent().remove(siguiente)
+                    if p_el.getparent() is not None:
+                        p_el.getparent().remove(p_el)
+
     elif template_id == 'reporte_fibra':
         replace_all(doc, {
             'xxxxxx': producto,
