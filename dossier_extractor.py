@@ -16,7 +16,9 @@ import unicodedata
 
 def _fmt_pct(value):
     """
-    Formatea una fracción decimal (ej 0.0303) como porcentaje legible.
+    Formatea una fracción decimal (ej 0.0303) como porcentaje legible, con
+    coma decimal (convención usada en el resto de los documentos
+    generados, no punto).
     Usa suficientes decimales para conservar al menos 2 cifras significativas,
     evitando perder valores muy chicos (ej. vitaminas en trazas).
     """
@@ -31,6 +33,7 @@ def _fmt_pct(value):
     decimales = max(6, -magnitud + 1)
     decimales = min(decimales, 15)
     s = f"{pct:.{decimales}f}".rstrip("0").rstrip(".")
+    s = s.replace(".", ",")
     return s if s else "0"
 
 
@@ -504,10 +507,11 @@ def extract_dossier(xlsx_bytes):
                 val_cell = ws_rotulo.cell(row=label_cell.row, column=col_100)
                 if campo:
                     if campo not in result and isinstance(val_cell.value, (int, float)):
-                        result[campo] = str(val_cell.value)
+                        result[campo] = str(val_cell.value).replace(".", ",")
                 elif isinstance(val_cell.value, (int, float)):
                     nombre_limpio = str(label_cell.value).strip()
-                    micronutrientes_extra.append(f"{nombre_limpio} | {val_cell.value}")
+                    valor_fmt = str(val_cell.value).replace(".", ",")
+                    micronutrientes_extra.append(f"{nombre_limpio} | {valor_fmt}")
             if micronutrientes_extra:
                 result["micronutrientes_extra"] = "\n".join(micronutrientes_extra)
 
