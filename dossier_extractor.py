@@ -352,11 +352,32 @@ def extract_dossier(xlsx_bytes):
         result["aditivos"] = "\n".join(aditivos_list)
         result["aditivos_filas"] = ", ".join(aditivos_filas)
 
-    # --- Información nutricional (hoja "Proyecto de rótulo...", columna 100 ml) ---
+    # --- Información nutricional (hoja de "Proyecto de Rótulo", columna 100 g/ml) ---
+    # Esta hoja no siempre se llama "Proyecto de rótulo" en la pestaña —
+    # algunos Dossiers la nombran con un código interno (ej. "PR PO8.08
+    # CL"), y el texto "Proyecto Rótulo" aparece solo en el título dentro
+    # del documento, no en el nombre de la pestaña. Por eso se busca
+    # primero por nombre de pestaña (más rápido) y, si no aparece, por el
+    # texto del título dentro de las primeras filas de cada hoja.
+    def _es_hoja_proyecto_rotulo(ws):
+        for row in ws.iter_rows(min_row=1, max_row=5, max_col=15):
+            for cell in row:
+                if not cell.value:
+                    continue
+                texto = _normalize(cell.value)
+                if "proyecto" in texto and "rotulo" in texto:
+                    return True
+        return False
+
     rotulo_sheet_name = next(
         (s for s in wb.sheetnames if _normalize(s).startswith("proyecto de rotulo")),
         None
     )
+    if rotulo_sheet_name is None:
+        rotulo_sheet_name = next(
+            (s for s in wb.sheetnames if _es_hoja_proyecto_rotulo(wb[s])),
+            None
+        )
     if rotulo_sheet_name:
         ws_rotulo = wb[rotulo_sheet_name]
         # Mapa etiqueta normalizada → campo del template
@@ -364,6 +385,7 @@ def extract_dossier(xlsx_bytes):
             "energia (kcal)": "energia",
             "proteinas (g)": "proteina",
             "grasas totales (g)": "grasa_total",
+            "grasa total (g)": "grasa_total",
             "grasas saturadas (g)": "grasa_sat",
             "grasas monoinsat. (g)": "grasa_mono",
             "grasas poliinsat. (g)": "grasa_poli",
@@ -371,6 +393,7 @@ def extract_dossier(xlsx_bytes):
             "colesterol (mg)": "colesterol",
             "carbohidratos totales (g)": "carb_totales",
             "carbohidratos disp. (g)": "carb_disp",
+            "hidratos de carbono disponibles (g)": "carb_disp",
             "azucares totales (g)": "azucares",
             "fibra dietetica total (g)": "fibra",
             "sodio (mg)": "sodio",
@@ -386,30 +409,43 @@ def extract_dossier(xlsx_bytes):
             if col_100:
                 break
         if col_100:
-            # Delimitar el bloque de la tabla nutricional: desde la fila
-            # "INFORMACIÓN NUTRICIONAL" más cercana hasta la nota al pie
-            # "(*) En relación..." — así evitamos capturar basura de otras
-            # secciones de la hoja como micronutrientes "extra" por error.
+            # La columna donde están las etiquetas ("Energía (kcal)", etc.)
+            # no siempre es la B — varía según el Dossier. Se ubica
+            # dinámicamente como la misma columna donde aparece el título
+            # "INFORMACIÓN NUTRICIONAL" (las etiquetas de la tabla quedan
+            # alineadas debajo de ese título en la práctica).
+            col_label = None
             fila_inicio = None
             fila_fin = None
             for row in ws_rotulo.iter_rows(min_row=1, max_row=ws_rotulo.max_row, max_col=col_100):
-                label_cell = row[1] if len(row) > 1 else None
-                if label_cell is None or not label_cell.value:
-                    continue
-                texto = _normalize(label_cell.value)
-                if "informacion nutricional" in texto and fila_inicio is None:
-                    fila_inicio = label_cell.row
-                if texto.startswith("(*) en relacion") and fila_inicio is not None and fila_fin is None:
-                    fila_fin = label_cell.row
-                    break
+                for cell in row:
+                    if not cell.value:
+                        continue
+                    texto = _normalize(cell.value)
+                    # Match exacto: el título de sección "2. INFORMACIÓN
+                    # NUTRICIONAL" también contiene esta frase como
+                    # substring, pero no es la celda que encabeza la
+                    # tabla en sí (que repite la frase sola, sin el "2.").
+                    if texto == "informacion nutricional" and fila_inicio is None:
+                        fila_inicio = cell.row
+                        col_label = cell.column
+                if fila_inicio is not None:
+                    # Ya encontramos el título; ahora buscamos el cierre
+                    # "(*) En relación..." en esa misma columna de etiquetas.
+                    label_cell = row[col_label - 1] if col_label and len(row) >= col_label else None
+                    if label_cell and label_cell.value and _normalize(label_cell.value).startswith("(*) en relacion") and fila_fin is None:
+                        fila_fin = label_cell.row
+                        break
             if fila_inicio is None:
                 fila_inicio = 1
+            if col_label is None:
+                col_label = 2
             if fila_fin is None:
                 fila_fin = ws_rotulo.max_row
 
             micronutrientes_extra = []
             for row in ws_rotulo.iter_rows(min_row=fila_inicio, max_row=fila_fin, max_col=col_100):
-                label_cell = row[1] if len(row) > 1 else None
+                label_cell = row[col_label - 1] if len(row) >= col_label else None
                 if label_cell is None or not label_cell.value:
                     continue
                 label_norm = _normalize(label_cell.value)
