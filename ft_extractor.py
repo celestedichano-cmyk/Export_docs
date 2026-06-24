@@ -84,12 +84,28 @@ def _parse_ingredientes(raw):
     return "\n".join(items)
 
 
+def _coma_decimal(texto):
+    """
+    Normaliza el separador decimal a coma (convención chilena/Latam usada
+    en los documentos generados), sin tocar texto no numérico. Las FT
+    mezclan formatos según quién las haya armado: algunas usan coma
+    ("10,5") y otras punto ("10.5") para el mismo tipo de dato. Esto
+    convierte únicamente un punto que esté entre dos dígitos (ej. "10.5"
+    -> "10,5", "5.5-6.5" -> "5,5-6,5"), por lo que no afecta separadores
+    como "/" en fechas, "x" en notación científica (5x10²), guiones de
+    rango, ni nada que no sea un punto decimal real.
+    """
+    if not texto:
+        return texto
+    return re.sub(r'(?<=\d)\.(?=\d)', ',', str(texto))
+
+
 def _first_number(text):
-    """Extract first numeric value from a string."""
+    """Extract first numeric value from a string, con coma decimal."""
     if not text:
         return ""
     m = re.search(r'[\d]+(?:[.,][\d]+)?', str(text))
-    return m.group(0).replace(',', '.') if m else ""
+    return _coma_decimal(m.group(0)) if m else ""
 
 
 def _extract_pagina1(table):
@@ -180,7 +196,7 @@ def _extract_pagina1(table):
                     ]
                     for idx_v, campo in enumerate(orden16):
                         if not campo.startswith("_"):
-                            result[campo] = vals16[idx_v].strip()
+                            result[campo] = _coma_decimal(vals16[idx_v].strip())
                     result["fibra_total"] = result.get("fibra", "")
                     idx_inicio = None
             break
@@ -233,7 +249,6 @@ def _extract_pagina1(table):
         if campo and campo not in result and val:
             num = _first_number(val)
             if num:
-                result[campo] = num.replace(".", ",") if "," in val and "." not in num else num
                 result[campo] = num
 
     result["fibra_total"] = result.get("fibra", "")
@@ -265,7 +280,7 @@ def _extract_pagina1(table):
                     m = re.match(r"^(.+?\([^)]+\))\s+([\d.,]+)", linea)
                     if m:
                         nombre = m.group(1).strip()
-                        valor = m.group(2).strip()
+                        valor = _coma_decimal(m.group(2).strip())
                         micronutrientes_extra.append(f"{nombre} | {valor}")
                 if micronutrientes_extra:
                     break
@@ -313,7 +328,7 @@ def _extract_pagina1(table):
                     texto_tras_etiqueta = linea[pos_etiqueta + len(mejor_clave):] if pos_etiqueta >= 0 else linea
                     numeros = re.findall(r'[\d]+(?:[.,][\d]+)?', texto_tras_etiqueta)
                     if numeros:
-                        result[campo] = numeros[0]
+                        result[campo] = _coma_decimal(numeros[0])
             break
 
     result["fibra_total"] = result.get("fibra", result.get("fibra_total", ""))
@@ -358,7 +373,7 @@ def _extract_pagina2(table):
             break
         if in_fq and cell0 and cell0 != "PARÁMETRO":
             parametro = _clean(row[0])
-            especificacion = _clean(row[1]) if len(row) > 1 and row[1] else ""
+            especificacion = _coma_decimal(_clean(row[1])) if len(row) > 1 and row[1] else ""
             metodologia = ""
             fq_rows.append(f"{parametro}|{metodologia}|{especificacion}")
 
@@ -395,7 +410,7 @@ def _extract_pagina2(table):
             parametro = _clean(row[0])
             if not parametro:
                 continue
-            valor_M = _clean(row[6]) if len(row) > 6 else ""
+            valor_M = _coma_decimal(_clean(row[6])) if len(row) > 6 else ""
             if valor_M in ("-", "--", "") or valor_M.strip("-") == "":
                 resultado = "0"
             else:
@@ -462,46 +477,47 @@ def _extract_pagina3(table):
             continue
 
         val = _clean(row[1]) if len(row) > 1 and row[1] else ""
+        val_num = _coma_decimal(val)
 
         if in_primario:
             if "Ancho" in cell0:
-                primario["ancho"] = val
+                primario["ancho"] = val_num
             elif "Largo" in cell0:
-                primario["largo"] = val
+                primario["largo"] = val_num
             elif "Alto" in cell0:
-                primario["alto"] = val
+                primario["alto"] = val_num
             elif "Peso neto" in cell0:
-                primario["peso_neto"] = val
+                primario["peso_neto"] = val_num
             elif "Peso bruto" in cell0:
-                primario["peso_bruto"] = val
+                primario["peso_bruto"] = val_num
             elif "Material" in cell0:
                 primario["material"] = val
 
         elif in_secundario:
             if "Ancho" in cell0:
-                secundario["ancho"] = val
+                secundario["ancho"] = val_num
             elif "Largo" in cell0:
-                secundario["largo"] = val
+                secundario["largo"] = val_num
             elif "Alto" in cell0:
-                secundario["alto"] = val
+                secundario["alto"] = val_num
             elif "Peso neto" in cell0:
-                secundario["peso_neto"] = val
+                secundario["peso_neto"] = val_num
             elif "Peso bruto" in cell0:
-                secundario["peso_bruto"] = val
+                secundario["peso_bruto"] = val_num
             elif "Material" in cell0:
                 secundario["material"] = val
 
         elif in_caja:
             if "Ancho" in cell0:
-                caja["ancho"] = val
+                caja["ancho"] = val_num
             elif "Largo" in cell0:
-                caja["largo"] = val
+                caja["largo"] = val_num
             elif "Alto" in cell0:
-                caja["alto"] = val
+                caja["alto"] = val_num
             elif "Peso neto" in cell0:
-                caja["peso_neto"] = val
+                caja["peso_neto"] = val_num
             elif "Peso bruto" in cell0:
-                caja["peso_bruto"] = val
+                caja["peso_bruto"] = val_num
             elif "Material" in cell0:
                 label_extra = cell0.split("envase", 1)[-1].strip()
                 material_val = (label_extra + val).strip() if label_extra else val
