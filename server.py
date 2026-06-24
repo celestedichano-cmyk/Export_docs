@@ -150,7 +150,7 @@ TEMPLATES = {
     "informe_aditivos": {
         "label": "Informe de Funcionalidad de Aditivos",
         "file": "Template_INFORME_FUNCIONALIDAD_ADITIVOS.docx",
-        "help": "Cargá la Ficha Técnica (PDF) para autocompletar el nombre del producto y traer el listado de ingredientes de la sección Descripción del producto, o cargá el Dossier (xlsx) para autocompletar el nombre del producto y traer la tabla de ingredientes en orden decreciente (hoja 'Fórmula'). Solo el Dossier indica además cuáles son aditivos y su función tecnológica; con la FT esos datos hay que completarlos manualmente.",
+        "help": "Cargá la Ficha Técnica (PDF) para autocompletar el nombre del producto y traer el listado de ingredientes de la sección Descripción del producto, o cargá el Dossier (xlsx) para autocompletar el nombre del producto y traer la tabla de ingredientes en orden decreciente (hoja 'Fórmula'). Solo el Dossier indica además cuáles son aditivos y completa su función tecnológica y su INS, ambos copiados directamente del Dossier; si alguno de los dos no figura ahí, queda sin completar. Con la FT esos datos hay que completarlos manualmente.",
         "fields": [
             {"id": "producto", "label": "Nombre del producto", "type": "text", "placeholder": "NOT Burger 113g"},
             {"id": "ingredientes", "label": "Lista de ingredientes (uno por línea)", "type": "textarea", "placeholder": "Agua\nProteína de soya\nAceite de girasol\nSal\nAromati­zante natural"},
