@@ -166,6 +166,20 @@
   .field textarea { resize: vertical; min-height: 100px; line-height: 1.5; }
   .field .hint { font-size: 11.5px; color: var(--muted); line-height: 1.4; }
 
+  .drive-hint {
+    margin-top: 14px;
+    padding: 10px 14px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 12.5px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  .drive-hint strong { color: var(--accent); }
+  .drive-hint a { color: var(--accent2); text-decoration: none; }
+  .drive-hint a:hover { text-decoration: underline; }
+
   .actions {
     display: flex; gap: 12px; align-items: center;
     margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--border);
@@ -347,6 +361,13 @@
         <a id="drive-link" href="#" target="_blank" style="display:none; font-size:13px; color:var(--accent2); margin-left:8px">
           ✓ Ver en Drive
         </a>
+      </div>
+
+      <div class="drive-hint">
+        📁 Al subir a Drive, el archivo se guarda en
+        <a href="https://drive.google.com/drive/folders/10NkxQ-2KV7Y6lMWyjTSenG1LuklqNN9n" target="_blank">la carpeta compartida de Certificados Expo</a>
+        → carpeta del producto (con el mismo nombre que pusiste en "Nombre del producto") → subcarpeta <strong>Editables</strong>.
+        Si esas carpetas todavía no existen, se crean automáticamente.
       </div>
     </div>
 
