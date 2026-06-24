@@ -68,6 +68,46 @@ for _grupo in GRUPOS_SINONIMOS:
     for _nombre in _grupo:
         _SINONIMO_DE[_nombre] = _grupo
 
+# Traducción palabra por palabra inglés→español para los casos en que la
+# tabla principal usa el nombre en inglés del insumo (tal como lo escribe
+# el proveedor, ej. "Wheat gluten") y la tabla de orden decreciente lo
+# trae traducido al español (ej. "Gluten de trigo"). Solo se necesita
+# traducir las palabras que cambian; las que ya son iguales en ambos
+# idiomas (ej. "gluten") no hace falta listarlas. Se puede ampliar esta
+# lista a medida que aparezcan más palabras así en otros Dossiers.
+TRADUCCION_EN_ES = {
+    "wheat": "trigo",
+    "fiber": "fibra",
+    "bamboo": "bambu",
+    "corn": "maiz",
+    "starch": "almidon",
+    "onion": "cebolla",
+    "garlic": "ajo",
+    "peach": "durazno",
+    "yeast": "levadura",
+    "powder": "polvo",
+    "flavor": "sabor",
+    "salt": "sal",
+    "protein": "proteina",
+    "oil": "aceite",
+}
+_PALABRAS_RELLENO_DOSSIER = {"de", "del", "la", "el", "los", "las", "y", "and"}
+
+
+def _palabras_canonicas(nombre):
+    """
+    Tokeniza un nombre de ingrediente, traduce cada palabra en inglés
+    conocida a su equivalente en español (ver TRADUCCION_EN_ES), descarta
+    palabras de relleno, y devuelve el conjunto ordenado de palabras
+    resultante — para comparar sin importar el idioma ni el orden (en
+    español el orden suele invertirse respecto del inglés, ej. "Wheat
+    gluten" vs "Gluten de trigo").
+    """
+    n = _normalize(nombre)
+    palabras = [p for p in n.split() if p not in _PALABRAS_RELLENO_DOSSIER]
+    traducidas = [TRADUCCION_EN_ES.get(p, p) for p in palabras]
+    return tuple(sorted(traducidas))
+
 
 def _buscar_en_mapa(nombre, mapa):
     """
@@ -79,7 +119,9 @@ def _buscar_en_mapa(nombre, mapa):
        en "metilcelulosa solucel") — con un largo mínimo para evitar falsos
        positivos con palabras cortas/genéricas;
     3) sinónimos conocidos sin relación textual (ej. "rojo de remolacha" /
-       "betanina"), vía GRUPOS_SINONIMOS.
+       "betanina"), vía GRUPOS_SINONIMOS;
+    4) mismo ingrediente en inglés en una tabla y en español en la otra
+       (ej. "Wheat gluten" / "Gluten de trigo"), vía TRADUCCION_EN_ES.
     Si más de una clave del mapa matchea por contención con valores
     distintos, se considera ambiguo y no se devuelve nada (mismo criterio
     de seguridad que el resto del matching de este proyecto).
@@ -102,6 +144,15 @@ def _buscar_en_mapa(nombre, mapa):
     grupo = _SINONIMO_DE.get(n)
     if grupo:
         candidatos = {mapa[alias] for alias in grupo if alias in mapa}
+        if len(candidatos) == 1:
+            return next(iter(candidatos))
+
+    palabras_n = _palabras_canonicas(nombre)
+    if palabras_n:
+        candidatos = {
+            valor for clave, valor in mapa.items()
+            if _palabras_canonicas(clave) == palabras_n
+        }
         if len(candidatos) == 1:
             return next(iter(candidatos))
 
