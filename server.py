@@ -1027,7 +1027,8 @@ def generate():
         buf = generate_doc(tid, data)
         label = TEMPLATES[tid]['label'].replace(' ', '_')
         producto = data.get('producto', 'producto').replace(' ', '_')
-        filename = f"{label}_{producto}.docx"
+        fecha_archivo = datetime.today().strftime('%d.%m.%Y')
+        filename = f"{fecha_archivo}_{producto}_{label}.docx"
         return send_file(buf, as_attachment=True, download_name=filename,
                          mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
     except Exception as e:
