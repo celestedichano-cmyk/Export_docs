@@ -634,10 +634,13 @@ document.addEventListener('input', e => {
 document.addEventListener('input', e => {
   if (!currentTmpl || currentTmpl !== 'reporte_saborizantes') return;
   if (e.target.id === 'f_sab_natural' || e.target.id === 'f_sab_identico') {
-    const nat = parseFloat(document.getElementById('f_sab_natural')?.value) || 0;
-    const ide = parseFloat(document.getElementById('f_sab_identico')?.value) || 0;
+    // Acepta coma o punto como separador decimal al tipear, y siempre
+    // muestra el resultado con coma (convención usada en los documentos).
+    const aNumero = v => parseFloat((v || '').replace(',', '.')) || 0;
+    const nat = aNumero(document.getElementById('f_sab_natural')?.value);
+    const ide = aNumero(document.getElementById('f_sab_identico')?.value);
     const total = document.getElementById('f_sab_total');
-    if (total) total.value = (nat + ide).toFixed(2).replace(/\.?0+$/, '');
+    if (total) total.value = (nat + ide).toFixed(2).replace(/\.?0+$/, '').replace('.', ',');
   }
 });
 
