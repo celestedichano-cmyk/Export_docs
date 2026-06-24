@@ -538,6 +538,12 @@ function collectData() {
     if (!el) return;
     if (f.type === 'checkbox') {
       data[f.id] = el.checked ? 'true' : 'false';
+    } else if (f.sin_relleno_de_ejemplo) {
+      // Estos campos no deben mandar el texto de ejemplo (placeholder)
+      // como si fuera un dato real cuando se dejan vacíos — el backend
+      // usa la ausencia de valor para decidir si quita la fila del
+      // documento en vez de completarla con el ejemplo.
+      data[f.id] = el.value.trim();
     } else {
       data[f.id] = el.value.trim() || el.placeholder || '';
     }
@@ -634,13 +640,22 @@ document.addEventListener('input', e => {
 document.addEventListener('input', e => {
   if (!currentTmpl || currentTmpl !== 'reporte_saborizantes') return;
   if (e.target.id === 'f_sab_natural' || e.target.id === 'f_sab_identico') {
+    const natRaw = (document.getElementById('f_sab_natural')?.value || '').trim();
+    const ideRaw = (document.getElementById('f_sab_identico')?.value || '').trim();
+    const total = document.getElementById('f_sab_total');
+    if (!total) return;
+    if (!natRaw && !ideRaw) {
+      // Ninguno de los dos tiene valor: el total queda vacío también
+      // (en vez de mostrar "0"), para que el backend quite la fila.
+      total.value = '';
+      return;
+    }
     // Acepta coma o punto como separador decimal al tipear, y siempre
     // muestra el resultado con coma (convención usada en los documentos).
-    const aNumero = v => parseFloat((v || '').replace(',', '.')) || 0;
-    const nat = aNumero(document.getElementById('f_sab_natural')?.value);
-    const ide = aNumero(document.getElementById('f_sab_identico')?.value);
-    const total = document.getElementById('f_sab_total');
-    if (total) total.value = (nat + ide).toFixed(2).replace(/\.?0+$/, '').replace('.', ',');
+    const aNumero = v => parseFloat(v.replace(',', '.')) || 0;
+    const nat = aNumero(natRaw);
+    const ide = aNumero(ideRaw);
+    total.value = (nat + ide).toFixed(2).replace(/\.?0+$/, '').replace('.', ',');
   }
 });
 
