@@ -661,6 +661,20 @@ document.getElementById('ft-input').addEventListener('change', async e => {
       const el = document.getElementById('f_' + campo);
       if (el && valor) { el.value = valor; encontrados++; }
     });
+    // Certificado de Empaque: la FT no siempre tiene las 3 secciones (hay
+    // productos que van directo de Envase Primario a Caja Master, sin
+    // Envase Secundario, u otras combinaciones). Ajustamos los checkboxes
+    // de "Incluir..." según qué secciones realmente trajeron datos, para
+    // que el documento generado no incluya una sección vacía ni omita una
+    // que sí estaba en la FT.
+    if (currentTmpl === 'certificado_empaque') {
+      const haySecundario = !!(campos.material_s || campos.ancho_s || campos.largo_s || campos.alto_s);
+      const hayCajaMaster = !!(campos.material_cm || campos.ancho_cm || campos.largo_cm || campos.alto_cm || campos.cantidad_unidades);
+      const elSec = document.getElementById('f_incluir_secundario');
+      const elCaja = document.getElementById('f_incluir_caja_master');
+      if (elSec) elSec.checked = haySecundario;
+      if (elCaja) elCaja.checked = hayCajaMaster;
+    }
     // Si ya hay un banco de metodologías cargado, completar fq_rows/mb_rows
     // que la FT acaba de llenar pero sin metodología.
     if (Object.keys(bancoMetodologias).length > 0) {
