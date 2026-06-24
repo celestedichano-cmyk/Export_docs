@@ -55,6 +55,59 @@ def _normalize(text):
     return " ".join(text.split())
 
 
+# Pares de nombres que refieren al mismo ingrediente/aditivo pero se
+# escriben distinto entre la tabla principal (a veces nombre comercial,
+# ej. "Betanina") y la tabla de orden decreciente (a veces nombre
+# genérico/INS, ej. "Rojo de remolacha") — o viceversa. Se puede ampliar
+# esta lista a medida que aparezcan más casos así en otros Dossiers.
+GRUPOS_SINONIMOS = [
+    {"rojo de remolacha", "betanina", "betanin"},
+]
+_SINONIMO_DE = {}
+for _grupo in GRUPOS_SINONIMOS:
+    for _nombre in _grupo:
+        _SINONIMO_DE[_nombre] = _grupo
+
+
+def _buscar_en_mapa(nombre, mapa):
+    """
+    Busca `nombre` en `mapa` (claves normalizadas), tolerando que la tabla
+    principal y la de orden decreciente usen redacciones distintas para
+    el mismo ingrediente:
+    1) match exacto;
+    2) un nombre contenido en el otro (ej. "metilcelulosa" está contenido
+       en "metilcelulosa solucel") — con un largo mínimo para evitar falsos
+       positivos con palabras cortas/genéricas;
+    3) sinónimos conocidos sin relación textual (ej. "rojo de remolacha" /
+       "betanina"), vía GRUPOS_SINONIMOS.
+    Si más de una clave del mapa matchea por contención con valores
+    distintos, se considera ambiguo y no se devuelve nada (mismo criterio
+    de seguridad que el resto del matching de este proyecto).
+    """
+    n = _normalize(nombre)
+    if not n:
+        return ""
+
+    if n in mapa:
+        return mapa[n]
+
+    if len(n) >= 5:
+        candidatos = set()
+        for clave, valor in mapa.items():
+            if len(clave) >= 5 and (n in clave or clave in n):
+                candidatos.add(valor)
+        if len(candidatos) == 1:
+            return next(iter(candidatos))
+
+    grupo = _SINONIMO_DE.get(n)
+    if grupo:
+        candidatos = {mapa[alias] for alias in grupo if alias in mapa}
+        if len(candidatos) == 1:
+            return next(iter(candidatos))
+
+    return ""
+
+
 def _valor_como_porcentaje(cell):
     """
     Devuelve el valor de una celda numérica como porcentaje "plano" (ej.
@@ -288,9 +341,9 @@ def extract_dossier(xlsx_bytes):
         aditivos_list = []
         aditivos_filas = []
         for idx, nombre in enumerate(ingredientes_orden, start=1):
-            funcion = funcion_por_ingrediente.get(_normalize(nombre), "")
+            funcion = _buscar_en_mapa(nombre, funcion_por_ingrediente)
             if funcion:
-                ins = ins_por_ingrediente.get(_normalize(nombre), "")
+                ins = _buscar_en_mapa(nombre, ins_por_ingrediente)
                 nombre_fmt = f"{nombre.upper()} (INS {ins})" if ins else nombre.upper()
                 aditivos_list.append(f"{nombre_fmt} | {funcion}")
                 aditivos_filas.append(str(idx))
