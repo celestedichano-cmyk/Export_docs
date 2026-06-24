@@ -185,7 +185,7 @@ TEMPLATES = {
     "reporte_saborizantes": {
         "label": "Reporte de Saborizantes",
         "file": "Template__REPORTE_SABORIZANTES.docx",
-        "help": "El nombre del producto se puede autocompletar cargando la Ficha Técnica (PDF) o el Dossier (xlsx). El resto de los campos se completa manualmente. El campo Total se calcula solo a partir del % Natural y % Idéntico Natural. Si dejás vacío Natural o Idéntico Natural, esa fila se elimina del documento generado en vez de usar un valor de ejemplo.",
+        "help": "El nombre del producto se puede autocompletar cargando la Ficha Técnica (PDF) o el Dossier (xlsx). El resto de los campos se completa manualmente. El campo Total se calcula solo a partir del % Natural y % Idéntico Natural. Si dejás vacío Natural o Idéntico Natural, esa fila queda en 0% en el documento generado en vez de usar un valor de ejemplo.",
         "fields": [
             {"id": "producto", "label": "Nombre del producto", "type": "text", "placeholder": "NOT Burger 113g"},
             {"id": "sab_natural", "label": "Saborizante Natural (%)", "type": "text", "placeholder": "0,5", "sin_relleno_de_ejemplo": True},
@@ -956,7 +956,6 @@ def generate_doc(template_id, data):
         sab_tbls = doc.element.body.findall(f'.//{{{WNS}}}tbl')
         if sab_tbls:
             tbl_el = sab_tbls[0]
-            filas_a_quitar = []
             for row in tbl_el.findall(f'{{{WNS}}}tr')[1:]:
                 cells = row.findall(f'{{{WNS}}}tc')
                 if len(cells) < 2: continue
@@ -964,18 +963,12 @@ def generate_doc(template_id, data):
 
                 fid_de_esta_fila = next((fid for lbl, fid in sab_map.items() if lbl in key), None)
                 if fid_de_esta_fila:
-                    valor = str(data.get(fid_de_esta_fila, '')).strip()
-                    if not valor:
-                        # Campo no completado: se quita la fila entera en
-                        # vez de dejar un valor de ejemplo por defecto.
-                        filas_a_quitar.append(row)
-                        continue
+                    # Si no se completó, se deja en 0% en vez de eliminar
+                    # la fila o de dejar el "x,x %" de ejemplo del template.
+                    valor = str(data.get(fid_de_esta_fila, '')).strip() or '0'
                     set_cell_value_xml(cells[1], valor + ' %', WNS)
                 elif 'TOTAL' in key:
-                    valor_total = str(data.get('sab_total', '')).strip()
-                    if not valor_total:
-                        filas_a_quitar.append(row)
-                        continue
+                    valor_total = str(data.get('sab_total', '')).strip() or '0'
                     val = valor_total + ' %'
                     # Preserve bold on TOTAL row
                     runs = cells[1].findall(f'.//{{{WNS}}}r')
@@ -989,9 +982,6 @@ def generate_doc(template_id, data):
                         t_el.text = val
                     else:
                         set_cell_value_xml(cells[1], val, WNS)
-            for row in filas_a_quitar:
-                if row.getparent() is not None:
-                    row.getparent().remove(row)
 
     # Apply firmante to ALL templates at the end
     set_producto_bold(doc, producto)
