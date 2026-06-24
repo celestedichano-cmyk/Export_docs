@@ -55,6 +55,82 @@ def _normalize(text):
     return " ".join(text.split())
 
 
+def _valor_como_porcentaje(cell):
+    """
+    Devuelve el valor de una celda numérica como porcentaje "plano" (ej.
+    55.5759 significa 55.5759%), sin importar si el Dossier lo guarda como
+    fracción con formato de celda "%" (valor crudo 0.555759) o como número
+    ya escalado (valor crudo 55.5759) — distintos Dossiers usan una u otra
+    convención según quién armó la plantilla.
+    """
+    if not isinstance(cell.value, (int, float)):
+        return None
+    if "%" in (cell.number_format or ""):
+        return cell.value * 100
+    return cell.value
+
+
+def _resolve_formula_refs(formula, ws_values):
+    """
+    Dada una fórmula simple que solo suma referencias a celdas (ej '=R30'
+    o '=V15+V16+V17'), devuelve la suma de los valores YA CALCULADOS
+    (cacheados) de esas celdas, leídos desde ws_values (hoja cargada con
+    data_only=True). Funciona sin importar a qué columna apunten las
+    referencias — distintos Dossiers usan columnas de apoyo distintas
+    (V, R, etc.) para esta cadena, según quién armó la plantilla.
+
+    Devuelve None si la celda no es una fórmula o no contiene referencias
+    de celda reconocibles.
+    """
+    if not isinstance(formula, str) or not formula.startswith("="):
+        return None
+    refs = re.findall(r'([A-Z]{1,3})(\d+)', formula.upper())
+    if not refs:
+        return None
+    total = 0.0
+    encontro_alguna = False
+    for col_letters, row_str in refs:
+        try:
+            celda = ws_values[f"{col_letters}{row_str}"]
+        except Exception:
+            continue
+        if isinstance(celda.value, (int, float)):
+            total += celda.value
+            encontro_alguna = True
+    return total if encontro_alguna else None
+
+
+def _buscar_encabezados(ws, etiquetas, max_filas=15, max_cols=40):
+    """
+    Busca, en las primeras `max_filas` filas de la hoja, una fila que
+    contenga la mayoría de las `etiquetas` (texto normalizado, puede ser
+    coincidencia parcial — "contiene") en distintas columnas de esa misma
+    fila. Devuelve {etiqueta: columna} para esa fila, y el número de fila,
+    o (None, None) si no se encuentra.
+
+    Esto reemplaza la suposición anterior de que cada columna está en una
+    posición fija (A, D, E, F, X, Y...) — los Dossiers de distintos
+    copackers/equipos insertan columnas extra (ej. "Código SAP") que
+    corren todo el resto de la tabla, así que hay que ubicar cada columna
+    por el texto real de su encabezado.
+    """
+    mejor_fila = None
+    mejor_mapa = {}
+    for row in ws.iter_rows(min_row=1, max_row=max_filas, max_col=max_cols):
+        mapa_fila = {}
+        for cell in row:
+            if not cell.value:
+                continue
+            texto = _normalize(cell.value)
+            for etiqueta in etiquetas:
+                if etiqueta not in mapa_fila and (texto == etiqueta or etiqueta in texto):
+                    mapa_fila[etiqueta] = cell.column
+        if len(mapa_fila) > len(mejor_mapa):
+            mejor_mapa = mapa_fila
+            mejor_fila = row[0].row
+    return mejor_fila, mejor_mapa
+
+
 def extract_dossier(xlsx_bytes):
     """
     Extrae producto, fórmula ordenada y datos de aditivos de un Dossier .xlsx.
@@ -81,86 +157,132 @@ def extract_dossier(xlsx_bytes):
 
     if "Fórmula" in wb.sheetnames:
         ws_formula = wb["Fórmula"]
-
-        # También cargamos el workbook con fórmulas (sin resolver) para
-        # poder seguir la cadena Y → V → D por número de fila, evitando
-        # depender de valores cacheados que pueden estar desactualizados.
         wb_formulas = load_workbook(io.BytesIO(xlsx_bytes), data_only=False)
         ws_formula_raw = wb_formulas["Fórmula"]
 
-        def _resolve_pct_from_formula(y_formula):
-            """
-            Dada la fórmula de una celda Y (ej '=V11' o '=V15+V16+V17'),
-            extrae los números de fila V referenciados y suma los valores
-            reales de la columna D en esas mismas filas (D{n} = V{n} siempre).
-            Devuelve None si la celda no es una fórmula de columna V.
-            """
-            if not isinstance(y_formula, str) or not y_formula.startswith("="):
-                return None
-            filas_v = re.findall(r"V(\d+)", y_formula)
-            if not filas_v:
-                return None
-            total = 0.0
-            for fila_str in filas_v:
-                fila_n = int(fila_str)
-                d_val = ws_formula.cell(row=fila_n, column=4).value
-                if isinstance(d_val, (int, float)):
-                    total += d_val
-            return total
+        # --- Ubicar columnas de la tabla principal (Ingrediente/% /Función/INS) ---
+        # por el texto de su encabezado, no por posición fija — distintos
+        # Dossiers insertan columnas extra (ej. "Código SAP") que corren
+        # todo lo demás.
+        fila_header_principal, cols_principal = _buscar_encabezados(
+            ws_formula,
+            ["ingredientes / aditivos", "%", "funcion aditivos", "ins"],
+        )
+        col_ing = cols_principal.get("ingredientes / aditivos", 1)
+        col_pct = cols_principal.get("%", 4)
+        col_funcion = cols_principal.get("funcion aditivos", 5)
+        col_ins = cols_principal.get("ins", 6)
+        fila_inicio_principal = (fila_header_principal or 3) + 1
 
-        # --- Mapa nombre normalizado → % (desde columna D, fuente real sin caché) ---
-        # Se usa como respaldo cuando el nombre de X coincide con A.
+        # --- Ubicar la tabla de orden decreciente ("Fórmula con orden
+        # decreciente de ingredientes") — puede estar en cualquier columna
+        # a la derecha de la tabla principal según el Dossier.
+        fila_titulo_decreciente, cols_titulo = _buscar_encabezados(
+            ws_formula, ["formula con orden decreciente de ingredientes"]
+        )
+        col_titulo_decreciente = cols_titulo.get("formula con orden decreciente de ingredientes")
+
+        col_ing_decreciente = None
+        col_pct_decreciente = None
+        fila_subheader_decreciente = None
+        if fila_titulo_decreciente and col_titulo_decreciente:
+            # La fila siguiente al título trae los sub-encabezados
+            # "Ingrediente" / "%" — se buscan cerca de esa columna para no
+            # confundirlas con la tabla principal (que también tiene "%").
+            for fila_candidata in range(fila_titulo_decreciente + 1, fila_titulo_decreciente + 4):
+                for cell in ws_formula[fila_candidata]:
+                    if cell.column < col_titulo_decreciente - 2:
+                        continue
+                    texto = _normalize(cell.value)
+                    if texto.startswith("ingrediente") and col_ing_decreciente is None:
+                        col_ing_decreciente = cell.column
+                        fila_subheader_decreciente = fila_candidata
+                    elif texto == "%" and col_pct_decreciente is None:
+                        col_pct_decreciente = cell.column
+                if col_ing_decreciente and col_pct_decreciente:
+                    break
+
+        # --- Mapa nombre normalizado → % (desde la tabla principal) ---
+        # Se usa como respaldo cuando el cruce por fórmula/caché no resuelve.
+        # El valor queda normalizado a "porcentaje plano" (ver
+        # _valor_como_porcentaje) para no mezclar convenciones distintas.
         pct_por_ingrediente = {}
-        r = 4
+        r = fila_inicio_principal
         while True:
-            ing_a = ws_formula.cell(row=r, column=1).value
+            ing_a = ws_formula.cell(row=r, column=col_ing).value
             if ing_a is None:
                 break
-            pct_d = ws_formula.cell(row=r, column=4).value
-            if isinstance(pct_d, (int, float)):
+            pct_d = _valor_como_porcentaje(ws_formula.cell(row=r, column=col_pct))
+            if pct_d is not None:
                 pct_por_ingrediente[_normalize(ing_a)] = pct_d
             r += 1
 
-        # --- Orden decreciente (columna X) con % resuelto vía cadena de fórmulas ---
+        # --- Orden decreciente, con % resuelto en tres pasadas:
+        # 1) si la celda es una fórmula que suma referencias a otras
+        #    celdas, se usa el valor YA CALCULADO de esas celdas (sin
+        #    asumir a qué columna de apoyo apuntan — varía según Dossier);
+        # 2) si no es fórmula (o no se pudo resolver), se usa el valor
+        #    cacheado de la propia celda;
+        # 3) como último respaldo, se cruza por nombre contra la tabla
+        #    principal.
         formula_rows = []
         ingredientes_orden = []
-        r = 5
-        while True:
-            ing = ws_formula.cell(row=r, column=24).value
-            if ing is None:
-                break
-            ing_clean = str(ing).strip()
-            y_formula = ws_formula_raw.cell(row=r, column=25).value
-            pct_val = _resolve_pct_from_formula(y_formula)
-            if pct_val is None:
-                # Fallback: cruce por nombre contra columna A/D
-                pct_val = pct_por_ingrediente.get(_normalize(ing_clean))
-            pct_str = _fmt_pct(pct_val) if isinstance(pct_val, (int, float)) else ""
-            formula_rows.append(f"{ing_clean} | {pct_str}")
-            ingredientes_orden.append(ing_clean)
-            r += 1
+        if col_ing_decreciente and col_pct_decreciente:
+            r = (fila_subheader_decreciente or 4) + 1
+            while True:
+                ing = ws_formula.cell(row=r, column=col_ing_decreciente).value
+                if ing is None:
+                    break
+                ing_clean = str(ing).strip()
+                if _normalize(ing_clean) == "total":
+                    break
+                celda_decreciente = ws_formula.cell(row=r, column=col_pct_decreciente)
+                celda_formula = ws_formula_raw.cell(row=r, column=col_pct_decreciente).value
+                pct_resuelto = _resolve_formula_refs(celda_formula, ws_formula)
+                if pct_resuelto is not None:
+                    # Resuelto sumando celdas referenciadas por la fórmula
+                    # (valores crudos, sin normalizar) — se escala según el
+                    # formato de ESTA celda (la que se muestra), no el de
+                    # las celdas referenciadas.
+                    if "%" in (celda_decreciente.number_format or ""):
+                        pct_val = pct_resuelto * 100
+                    else:
+                        pct_val = pct_resuelto
+                else:
+                    # Sin fórmula resoluble: usar el valor cacheado de la
+                    # propia celda (ya normalizado a porcentaje plano), o
+                    # como último respaldo, cruzar por nombre.
+                    pct_val = _valor_como_porcentaje(celda_decreciente)
+                    if pct_val is None:
+                        pct_val = pct_por_ingrediente.get(_normalize(ing_clean))
+                pct_str = _fmt_pct(pct_val / 100) if isinstance(pct_val, (int, float)) else ""
+                formula_rows.append(f"{ing_clean} | {pct_str}")
+                ingredientes_orden.append(ing_clean)
+                r += 1
         result["formula_rows"] = "\n".join(formula_rows)
 
-        # --- Mapa nombre normalizado → función y → INS (desde tabla A/E/F) ---
+        # --- Mapa nombre normalizado → función y → INS (tabla principal) ---
         funcion_por_ingrediente = {}
         ins_por_ingrediente = {}
-        r = 4
+        r = fila_inicio_principal
         while True:
-            ing = ws_formula.cell(row=r, column=1).value
+            ing = ws_formula.cell(row=r, column=col_ing).value
             if ing is None:
                 break
-            funcion = ws_formula.cell(row=r, column=5).value
-            ins = ws_formula.cell(row=r, column=6).value
-            if funcion:
+            funcion = ws_formula.cell(row=r, column=col_funcion).value
+            ins = ws_formula.cell(row=r, column=col_ins).value
+            if funcion and _normalize(funcion) not in ("n/a", "na", ""):
                 funcion_por_ingrediente[_normalize(ing)] = str(funcion).strip()
             ins_fmt = _fmt_ins(ins)
             if ins_fmt:
                 ins_por_ingrediente[_normalize(ing)] = ins_fmt
             r += 1
-        # "Saborizantes naturales" ya viene agrupado en columna X; si no está
-        # mapeado individualmente en A/E (porque ahí está desglosado en aromas),
-        # asignamos su función fija conocida.
+        # "Saborizantes naturales" ya viene agrupado en la tabla de orden
+        # decreciente; si no está mapeado individualmente en la tabla
+        # principal (porque ahí está desglosado en aromas), asignamos su
+        # función fija conocida.
         funcion_por_ingrediente.setdefault(_normalize("Saborizantes naturales"), "Saborización")
+        funcion_por_ingrediente.setdefault(_normalize("Sabores Naturales"), "Saborización")
 
         # --- Cruce: ingredientes (orden decreciente) + aditivos + filas ---
         aditivos_list = []
